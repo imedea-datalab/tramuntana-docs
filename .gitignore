@@ -1,0 +1,5 @@
+# apple mac specific files
+.DS_Store
+
+# other files
+Notes.md
