@@ -2,6 +2,7 @@
 
 **Institution**: IMEDEA UIB-CSIC  
 **Cluster Name**: Tramuntana  
+**Blog Post**: [https://imedea-datalab.github.io/tramuntana-docs/](https://imedea-datalab.github.io/tramuntana-docs/)
 
 ---
 
