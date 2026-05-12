@@ -18,6 +18,7 @@ This is a beginner's guide to be **read in order**, like chapters of a book. Eac
 | **2** | [Meet the Manager — SLURM](2-what-is-slurm.md) | The program that sits between you and the cluster — what it does, where it lives, and how it organizes work |
 | **3** | [Getting Connected](3-getting-connected.md) | What IP addresses and DNS are, how the office network works, what SSH and VPN actually do, and how to log in for the first time |
 | **4** | [The File System](4-the-file-system.md) | Where your files live — home directories, group storage, and quotas |
+| **5** | [Your First Job](5-how-to-slurm.md) | How to write job scripts and run python/R calculations using SLURM, plus accessing interactive visual servers like Jupyter or RStudio. |
 
 ---
 

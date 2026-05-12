@@ -117,9 +117,9 @@ So, for now, just know that trying to use this local storage method won't work w
 
 ---
 
-**Next up**: In [Part 5: Your First Job](5-your-first-job.md), we'll finally put everything together and you'll write and submit your very first batch job to the cluster using SLURM.
+**Next up**: In [Part 5: Your First Job](5-how-to-slurm.md), we'll finally put everything together and you'll write and submit your very first batch job to the cluster using SLURM.
 
 ---
 **Navigation:**
-🏠 [Home](README.md) | 📖 [1. Under the Hood](1-under-the-hood.md) | ⚙️ [2. What is SLURM?](2-what-is-slurm.md) | 🔌 [3. Getting Connected](3-getting-connected.md) | 📁 **4. The File System** |
+🏠 [Home](README.md) | 📖 [1. Under the Hood](1-under-the-hood.md) | ⚙️ [2. What is SLURM?](2-what-is-slurm.md) | 🔌 [3. Getting Connected](3-getting-connected.md) | 📁 **4. The File System** | 🚀 [5. Your First Job](5-how-to-slurm.md)
 ---

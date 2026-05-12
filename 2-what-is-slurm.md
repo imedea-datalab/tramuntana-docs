@@ -113,5 +113,5 @@ Let's quickly recap what we covered in this part:
 
 ---
 **Navigation:**
-🏠 [Home](README.md) | 📖 [1. Under the Hood](1-under-the-hood.md) | ⚙️ **2. What is SLURM?** | 🔌 [3. Getting Connected](3-getting-connected.md) | 📁 [4. The File System](4-the-file-system.md)
+🏠 [Home](README.md) | 📖 [1. Under the Hood](1-under-the-hood.md) | ⚙️ **2. What is SLURM?** | 🔌 [3. Getting Connected](3-getting-connected.md) | 📁 [4. The File System](4-the-file-system.md) | 🚀 [5. Your First Job](5-how-to-slurm.md)
 ---
