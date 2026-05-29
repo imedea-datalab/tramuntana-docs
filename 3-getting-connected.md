@@ -44,7 +44,7 @@ Now, let's talk about how computers actually talk to each other. Let's start wit
 
 Look behind your desktop computer. See that yellow cable plugged into the back? That's an **Ethernet cable**. It goes from your computer into the wall, and from there it goes to a **network switch** — a box that connects all the cables from all the desktops in the office together. And that same switch is also connected to the cluster's login node (`tramuntana`).
 
-So right now, sitting in your office, your desktop computer and the login node are connected by **physical wires**. This connection of all the PCs to the login node through physical wires is what they mean when they say - "They're ( computers ) on the same network". This enables them to be able to talk to tramuntana.
+So right now, sitting in your office, your desktop computer and the login node are connected by **physical wires**. This connection of all the PCs to the login node through physical wires is what they mean when they say - "They are ( computers ) on the same network". This enables them to be able to talk to tramuntana.
 
 All these cables — from your desktop, from your colleague's desktop, from the servers in the server room — they all come together and form a **network**. And because this network is only for IMEDEA (not for the general public), it's a **private network**. Not just anyone can get in. You have to be physically plugged in or connected through a VPN using credentials to access this network. So we can call it a **Physical Private Network.**
 
@@ -60,7 +60,7 @@ Okay, so you're sitting at your desk. You're plugged into the network. Now you w
 ssh your-username@tramuntana
 ```
 
-This is the **SSH command** — SSH stands for **Secure Shell**, and it's basically a way to remotely sit in front of another computer. You're saying: *"I want to open a terminal on that other computer and control it from here."*
+This is the **SSH command** — SSH stands for **Secure Shell**, and it's basically a way to remotely sit in front of another computer. You're saying: *"I want to open a terminal on that other computer (tramuntana) and control it from here."*
 
 But let's break down what actually happens when you press Enter on that command. It's like sending a letter:
 
@@ -80,7 +80,7 @@ Here's an important detail: just like when you send a physical letter, you don't
 
 ### Step 3: The Network Checks the Gate
 
-Now, the IMEDEA network has a kind of gate — a **firewall** ( Or **DHCP Server IP assigment**, but dont worry it is doing the same function and this much detail is not needed ). Before the request even reaches the login node, the network checks: *"Is this request coming from inside our private network?"*
+Now, the IMEDEA network has a kind of gate — a **firewall** ( but dont worry it is doing the same function and this much detail is not needed ). Before the request even reaches the login node, the network checks: *"Is this request coming from inside our private network?"*
 
 Since you're sitting at your office desk, physically connected through that Ethernet cable, your computer has an IP address that's part of the IMEDEA network range ( This simply means that the IMEDEA network admin added your computer's IP address to the list of safe IPs which are allowed to access the login node ). The gate sees this and says: *"Yep, this address is one of ours. Let it through."*
 

@@ -61,7 +61,7 @@ So think of it as: **Your computer → Login node → Cluster**. You never inter
 
 But here's the critical rule — and I really can't stress this enough:
 
-> ⚠️ **NEVER run computations on the login node.** The login node is not for running your experiments, simulations, or training your models. It's only for managing and launching your work. All the heavy lifting happens on the compute nodes (ada, thor, pampero, tramuntana-n1), and SLURM is the one who sends your work there. It only has very limited umber of CPUs which are only sufficient for running SLURM and handling your activity while you are on that node (tramuntana) ( you activities include bash commands etc ).
+> ⚠️ **NEVER run computations on the login node.** The login node is not for running your experiments, simulations, or training your models. It's only for managing and launching your work. It only has 2 CPUs. All the heavy lifting happens on the compute nodes (ada, thor, pampero, tramuntana-n1), and SLURM is the one who sends your work there. It only has very limited umber of CPUs (2 CPUs) which are only sufficient for running SLURM, sending your jobs to the Compute node and handling your activity while you are on that node (tramuntana) (your activities include bash commands etc).
 
 Think of it like the reception desk at a factory. You walk in, check in at reception, tell them what you need built — and then the factory workers (compute nodes) do the actual work. You wouldn't start welding metal at the reception desk, right? Same idea.
 
@@ -90,9 +90,30 @@ Let's zoom out and see the full picture of how you actually interact with the Tr
 
 ![SLURM Cluster Architecture Diagram](images/slurm-architecture.png)
 
-That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. Everything is connected through a fast 10 Gbps network. This part of how storage is accessed and connected in the cluster will be explained in detail in the storage part 4 of the guide.
+That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. Everything (the login node tramuntana, compute nodes (ada, thor, pampero, tramuntana-n1), and storage nodes (migjorn, tramuntana-nas)) is inter-connected through a fast 10 Gbps network. 
 
 ---
+
+## Understanding Partitions
+
+Before you go ahead, you need to know about **partitions**. Think of them like different lanes on a highway. A cluster has many compute nodes, and partitions are just a way of grouping them and setting rules — like speed limits and which cars (jobs) are allowed on which lane.
+
+SLURM uses partitions to decide *where* your job can run, *how long* it can run, and *what priority* it gets. If you don't specify a partition, your job goes to the default lane (`cpu`).
+
+Tramuntana has **three partitions**:
+
+| Partition | Which Nodes Can It Use? | Max Time | Priority | Best For |
+|-----------|-------------------------|----------|----------|----------|
+| **express** | All 4 compute nodes (ada, thor, pampero, tramuntana-n1) | 2 hours | ⚡ Highest (200) | Quick tests, debugging, compiling code |
+| **cpu** *(default)* | All 4 compute nodes | 10 days | Normal (50) | Long CPU-intensive jobs, R analyses, simulations |
+| **gpu** | Only tramuntana-n1 & thor (the ones with GPUs) | 10 days | High (100) | AI/ML training, GPU-accelerated computing |
+
+**How to pick one:**
+- Need a quick 30-minute test? Use `--partition=express`. It gets higher priority so you won't wait long.
+- Running a big simulation overnight? Use `--partition=cpu` (or just don't specify — it's the default).
+- Training a neural network on a GPU? Use `--partition=gpu`.
+
+**Per-user limits:** Each user can have at most **20 jobs running at the same time** and **50 jobs total in the queue**. This makes sure nobody hogs all the resources.
 
 ## Recap: What You've Learned
 
@@ -106,6 +127,7 @@ Let's quickly recap what we covered in this part:
 
 4. **Don't confuse `tramuntana` (login node) with `tramuntana-n1` (compute node).** They are completely different machines with very different purposes.
 
+5. **Partitions are like different lanes on a highway**. A cluster has many compute nodes, and partitions are just a way of grouping them and setting rules — like speed limits and which cars (jobs) are allowed on which lane.
 
 ---
 
