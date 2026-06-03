@@ -214,6 +214,11 @@ Only two nodes have GPUs:
 - **tramuntana-n1**: 1× NVIDIA L40S (48 GB VRAM)
 - **thor**: 2× NVIDIA RTX 6000 Ada (48 GB VRAM each)
 
+**💡 Tip:** To quickly check how much GPU memory is currently free across the cluster, run:
+```bash
+check_gpu
+```
+
 To use a GPU, you need two things: the `gpu` partition and the `--gres=gpu_mem:N` flag, where **N is the amount of GPU VRAM in GB** that your job needs.
 
 > [!IMPORTANT]
@@ -302,7 +307,7 @@ Use this to make sure you haven't missed a step, from first connection to finish
 **🎮 4. GPU Jobs (skip if CPU-only)**
 - [ ] Use `--partition=gpu`
 - [ ] Use `--gres=gpu_mem:N` (**not** `--gres=gpu:1` — that silently caps you at 12 GB)
-- [ ] Check available VRAM with the quick eavesdrop command before submitting
+- [ ] Check available VRAM with `check_gpu` before submitting
 - [ ] Optionally use `--nodelist=thor` or `--nodelist=tramuntana-n1` for a specific GPU
 
 **🚀 5. Submit & Monitor**

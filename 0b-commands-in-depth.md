@@ -171,13 +171,20 @@ Because GPUs are shared, you need to be aware of what's actually happening on th
 **1. SLURM's bookkeeping** — what SLURM *thinks* is reserved (the accounting side).
 **2. Actual GPU usage** — what the hardware is *really* using right now.
 
-### Step 1: Check what jobs are running on the GPU nodes
+### Step 1: Overview of free GPU memory
+Before submitting a job, you can quickly check how much GPU memory is currently free across all nodes using the custom command:
+```bash
+check_gpu
+```
+*(This shows total, used, and free memory shards/GBs per node).*
+
+### Step 2: Check what jobs are running on the GPU nodes
 ```bash
 squeue -u $USER
 ```
 This shows your jobs and which nodes they're on.
 
-### Step 2: Peek inside a running GPU job
+### Step 3: Peek inside a running GPU job
 
 To see the live GPU status on the node where your job is running, you can "hop into" the job using `srun --jobid`:
 
@@ -210,7 +217,7 @@ This runs `nvidia-smi` inside your existing job's allocation (using `--overlap` 
 
 The `Processes` table at the bottom shows you each job's actual VRAM consumption — `8192MiB` means that process is using ~8 GB of the GPU's 48 GB.
 
-### Step 2b: Quick GPU eavesdrop (without an existing job)
+### Step 3b: Quick GPU eavesdrop (without an existing job)
 
 Want to check GPU usage *before* submitting a job, or just curious how busy the GPUs are right now? You can launch a lightweight "eavesdrop" session that requests only 1 GB of VRAM and gives you live stats:
 
@@ -229,7 +236,7 @@ Here's what each flag does:
 
 This is perfect for a quick sanity check before submitting a big training job.
 
-### Step 3: Check efficiency after a job completes
+### Step 4: Check efficiency after a job completes
 ```bash
 seff <job_id>
 ```
@@ -320,12 +327,13 @@ SLURM creates 5 independent jobs. Each one gets its own GPU, its own 16 GB of RA
 
 ---
 
-## 4. Commands ## 8. Commands & Monitoring Monitoring Reference
+## 4. Commands & Monitoring Reference
 
 ### Quick Command Reference
 
 | Command | What It Does |
 |---------|-------------|
+| `check_gpu` | Custom command to check free/used GPU memory on nodes. |
 | `squeue` | See all jobs on the cluster. |
 | `squeue -u $USER` | See only **your** running and pending jobs. |
 | `scancel <job_id>` | Cancel/stop a specific job. |
