@@ -43,6 +43,13 @@ ssh your-username@10.33.0.143
 
 ## 2. Running Jobs with SLURM
 
+> [!TIP]
+> **🚀 Open OnDemand is Live!**
+>
+> If you just want to run interactively, you can now launch sessions like **VS Code**, **MATLAB**, or **RStudio** directly from your browser — no terminal commands needed. Just go to [https://10.33.0.143/](https://10.33.0.143/), pick your resources, and start working.
+>
+> Check out the [**Open OnDemand Guide**](open-ondemand.md) for full instructions, including how to fix the blank screen issue in VS Code Jupyter Notebooks.
+
 SLURM is the cluster manager. You don't run heavy code directly on the login node — instead, you ask SLURM to run it on a compute node for you. There are three main ways to do this: `sbatch`, `salloc`, and `srun`. Each one serves a different purpose.
 
 ---
@@ -201,10 +208,13 @@ This is handy for quick interactive testing **in a terminal**.
 | Interactive work with VS Code / Jupyter | `salloc` + SSH | Full access to tools beyond the terminal. |
 | Launching parallel/distributed code (MPI, DDP) | `sbatch` + `srun` inside the script | `sbatch` for the background wrapper, `srun` for the parallel launch. |
 
-> [!TIP]
-> **🚧 Coming Soon: Open OnDemand**
->
-> We are planning to add [Open OnDemand](https://openondemand.org/) to the cluster. Once available, you'll be able to launch interactive sessions like **VS Code** or **Jupyter** directly from your browser — no terminal commands needed. Just go to a link, pick your resources, and start working. Stay tuned!
+
+
+**💡 Tip:** Before you submit your job, check if the cluster has enough available resources!
+To check available CPU and RAM across the cluster:
+```bash
+check_cpu_ram
+```
 
 ---
 
@@ -311,6 +321,7 @@ Use this to make sure you haven't missed a step, from first connection to finish
 - [ ] Optionally use `--nodelist=thor` or `--nodelist=tramuntana-n1` for a specific GPU
 
 **🚀 5. Submit & Monitor**
+- [ ] Check available CPU/RAM with `check_cpu_ram` before submitting
 - [ ] Submit: `sbatch my_job.slurm` — note the job ID
 - [ ] Check status: `squeue -u $USER`
 - [ ] Watch output live: `tail -f output_<jobid>.txt`

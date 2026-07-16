@@ -13,7 +13,7 @@ This guide covers advanced usage of SLURM, including deep-dives into job paramet
 | # | Topic |
 |---|-------|
 | 1 | [Important SLURM Arguments Explained](#1-important-slurm-arguments-explained) |
-| 2 | [Checking GPU Memory Usage](#2-checking-gpu-memory-usage) |
+| 2 | [Checking Resource Usage (GPU, CPU, RAM)](#2-checking-resource-usage-gpu-cpu-ram) |
 | 3 | [Job Arrays — Running Many Independent Jobs](#3-job-arrays--running-many-independent-jobs) |
 | 4 | [Commands & Monitoring Reference](#4-commands--monitoring-reference) |
 
@@ -164,7 +164,35 @@ Multiple people can share the same physical GPU on Tramuntana. When you request 
 
 ---
 
-## 2. Checking GPU Memory Usage
+## 2. Checking Resource Usage (GPU, CPU, RAM)
+
+### Checking CPU & RAM Usage
+
+To quickly check how much CPU and RAM is currently being used across all nodes in the cluster, use the custom command:
+
+```bash
+check_cpu_ram
+```
+
+This will output a summary table showing the total and used CPUs and RAM for each node:
+
+```text
+=======================================================================
+                      CPU & RAM STATUS
+=======================================================================
+Node            | CPU (Used/Total)   | RAM GB (Used/Total)
+-----------------------------------------------------------------------
+pampero         |    0 /   64 CPUs |     0 /   378 GB
+barracuda       |    0 /   20 CPUs |     0 /    62 GB
+tramuntana-n1   |    0 /   48 CPUs |     0 /   377 GB
+ada             |    0 /  256 CPUs |     0 /   756 GB
+thor            |  114 /  128 CPUs |  1228 /  1512 GB
+=======================================================================
+```
+
+This is very useful to check before submitting a large job to ensure there are enough resources available on the node you want to use.
+
+### Checking GPU Memory Usage
 
 Because GPUs are shared, you need to be aware of what's actually happening on them. There are two sides to GPU monitoring:
 
@@ -334,6 +362,7 @@ SLURM creates 5 independent jobs. Each one gets its own GPU, its own 16 GB of RA
 | Command | What It Does |
 |---------|-------------|
 | `check_gpu` | Custom command to check free/used GPU memory on nodes. |
+| `check_cpu_ram` | Custom command to check free/used CPU and RAM on all nodes. |
 | `squeue` | See all jobs on the cluster. |
 | `squeue -u $USER` | See only **your** running and pending jobs. |
 | `scancel <job_id>` | Cancel/stop a specific job. |
