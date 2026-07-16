@@ -8,6 +8,7 @@
 ### Commands & Usage Guide
 *Code, commands, and software environments.*
 * [**Quick Start & Commands**](0-quick-start.md) — The essential cheat sheet for SSH, SLURM commands, GPUs, and job management.
+* [**Open OnDemand: Interactive Apps**](open-ondemand.md) — Launch MATLAB, VS Code, and RStudio directly from your browser.
 * [**Advanced SLURM Commands & Monitoring**](0b-commands-in-depth.md) — Advanced SLURM options, Job Arrays, and GPU monitoring.
 * [**Software & Environments**](environments-and-software.md) — Managing Python environments (`uv`, Conda) and using R/RStudio.
 
