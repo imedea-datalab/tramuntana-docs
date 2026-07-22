@@ -148,9 +148,9 @@ ssh thor    # or whatever node was assigned
 
 `srun` is the Swiss Army knife of SLURM. It does two main things depending on context:
 
-**Use 1: Quick one-off commands.** Want to quickly test something on a compute node without writing a whole `.slurm` file? Just run it directly:
+**Use 1: Quick one-off commands.** Want to quickly test something on a compute node without writing a whole `.slurm` file (e.g., checking GPU status)? Just run it directly:
 ```bash
-srun --partition=express --cpus-per-task=2 --mem=4G python quick_test.py
+srun --partition=gpu --gres=gpu_mem:1 nvidia-smi
 ```
 Your terminal will freeze while SLURM waits for resources. Once a slot opens up, your command runs on the compute node and the output streams back to your screen. When it finishes, the resources are released. This is the primary use of `srun` — fire-and-forget one-off jobs.
 
@@ -165,7 +165,17 @@ Your terminal will freeze while SLURM waits for resources. Once a slot opens up,
 srun python my_parallel_script.py
 ```
 
-SLURM spawns 4 copies of your script on the booked CPUs, and passes a secret "address map" to each one so they know where the others are. Libraries like MPI and PyTorch DDP read this map automatically — you don't need to write any networking code yourself.
+Slurm instantly clones your script into 4 separate processes (copies) and physically places each one onto a booked CPU. They all start running at the exact same time.
+
+Before those 4 copies even execute their first line of Python code, Slurm injects hidden environment variables into each process. This includes things like:
+- `SLURM_PROCID`: Tells the specific copy its unique rank (e.g., "I am copy 0," "I am copy 1").
+- `SLURM_NPROCS`: Tells the copy the total number of tasks (e.g., "There are 4 of us total").
+- `SLURM_LAUNCH_NODE_IPADDR`: Tells the copies the network IP address of the main node.
+
+This is where your multiprocessing or distributed library (like PyTorch DDP or MPI) takes over inside the script. When your code initializes the distributed backend (e.g., `init_process_group` in PyTorch), the library automatically looks at those environment variables. Yes, PyTorch DDP and MPI both have built-in support for the Slurm environment. It instantly discovers:
+- How many other copies exist.
+- Which specific number it is.
+- Where the master node is to establish a network connection.
 
 > [!IMPORTANT]
 > **`srun` vs plain `python`:** If your `.slurm` script says `#SBATCH --ntasks=4` but you just type `python script.py`, SLURM only runs it **one time** on one CPU. The other 3 sit completely empty and wasted! You must use `srun python script.py` to actually launch 4 copies across all your booked resources.
@@ -179,6 +189,22 @@ srun --partition=express --cpus-per-task=4 --mem=8G --pty bash
 This requests resources (like 1 node, some CPUs) and immediately drops you into a live shell on the compute node — your prompt changes to something like `user@thor:~$`. It feels exactly like SSHing into the node, but SLURM tracks the resource usage perfectly. You see `stdout`/`stderr` instantly in your terminal, and no output files are created unless you explicitly redirect them.
 
 This is handy for quick interactive testing **in a terminal**.
+
+> [!CAUTION]
+> **What happens when you exit the shell?**
+> - **Background processes will be KILLED.** If you start a process in the background (e.g., `python script.py &`) and exit the shell, Slurm will instantly kill it. It does not matter whether you pre-allocated resources with `salloc` or let `srun --pty bash` allocate them on the fly. Once the shell exits, the job step ends, and Slurm strictly cleans up all associated processes.
+> - **`sbatch` jobs are SAFE.** `sbatch` behaves completely differently. If you type `sbatch my_job.slurm` inside an interactive shell, you aren't actually running the job in that shell. You are just sending a message to the Slurm controller saying, *"Please put this new, independent job into the queue."* Because it gets its own independent Job ID, it will survive even if you close your interactive shell.
+
+> [!TIP]
+> **How to keep interactive sessions alive (The `tmux` trick)**
+> If you want to run an interactive shell, start a long script, and then safely disconnect your laptop without the job dying, use `tmux` on the **login node** first:
+> 1. `tmux new -s my_session` *(Starts a persistent terminal window on the login node).*
+> 2. `srun --pty bash` *(Requests resources and jumps to the compute node inside that window).*
+> 3. `python train.py` *(Start your long-running task).*
+> 4. Press **`Ctrl+B`**, let go, then press **`D`** *(Detaches the window so you can safely disconnect your SSH).*
+> 5. `tmux attach -t my_session` *(Run this when you reconnect later to resume exactly where you left off).*
+>
+> *Note: Slurm still perfectly tracks this! You will see it running in `squeue`, and it will still respect your requested time limits.*
 
 > [!WARNING]
 > **Don't try to launch `srun`, `mpirun`, or parallel jobs from inside `srun --pty`.** While SLURM technically allows running `srun` as a "job step" within an existing allocation, it's unreliable in this context — you're constrained to the parent job's resources, environment variables can conflict, and MPI launchers often fail to detect the allocation correctly. If you need to run parallel tasks or multi-step workflows interactively, use `salloc` instead — it gives you a proper allocation from which you can safely launch `srun` and MPI commands.
@@ -194,6 +220,13 @@ This is handy for quick interactive testing **in a terminal**.
 > | **Waiting** | You must wait in the queue. Once resources are free, you're dropped in automatically. | `salloc` books the resources first. Once the reservation is granted, you SSH in whenever you're ready — no additional wait. |
 > | **Flexibility** | Single terminal session, terminal-only. | Full access: VS Code, Jupyter, multiple SSH sessions, etc. |
 > | **Best for** | Quick one-off testing in a terminal. | Longer interactive/development sessions requiring richer tooling. |
+
+**Use 4: Tracking sub-processes (Job Steps).**
+Whenever you execute `srun`, Slurm creates a "Job Step" within the overarching allocation. 
+- In your `.slurm` file, if you run `srun python run_colbert.py`, it creates Job Step `<jobid>.0`, and a subsequent `srun python run_vllm.py` creates Job Step `<jobid>.1`.
+- (Even when you use `srun --pty bash` interactively, Slurm creates a Job Step just to run the bash terminal process. Once that terminal process exits, the Job Step is marked as completed, and Slurm terminates anything else attached to it).
+
+Because of this, you can use `srun` multiple times within a single `.slurm` file, and Slurm will track these sub-processes individually. You can use the command `sstat -j <jobid> -a --format=JobID,AveCPU,MaxRSS` to see the exact real-time RAM and CPU usage of each specific job step.
 
 ---
 
