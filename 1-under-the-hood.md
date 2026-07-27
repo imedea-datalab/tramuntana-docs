@@ -113,26 +113,29 @@ Some nodes don't just have CPUs — they also have **GPUs (Graphics Processing U
 
 ### Meet the Tramuntana Nodes
 
-This is exactly how the Tramuntana cluster at IMEDEA is set up. It has 4 compute nodes, each with a different specialty:
+This is exactly how the Tramuntana cluster at IMEDEA is set up. It has 7 compute nodes, each with a different specialty:
 This table may look intimidating, but don't worry about it. You'll learn which node is right for you and the technical terms explained in the later sections of this guide.
-| Node | Cores (CPU ) | Memory (RAM) | Special | Best For |
+| Node | Cores (CPU) | Memory (RAM) | Special | Best For |
 |------|-------|-------------|---------|----------|
 | **ada** | 256 cores | 768 GB | 7TB NVMe scratch storage | 🏋️ *The CPU Powerhouse* — when you need massive parallelism |
 | **thor** | 128 cores | 1.5 TB | 2x NVIDIA RTX 6000 Ada GPUs | 🎮 *The GPU & Memory Giant* — for AI/ML and memory-hungry jobs or you need to fit big data in memory (VRAM + RAM) |
 | **pampero** | 64 cores | 384 GB | 40TB local storage | 📦 *The Storage Node* — when you need lots of disk space for I/O tasks |
 | **tramuntana-n1** | 48 cores | 384 GB | 1x NVIDIA L40S GPU | ⚖️ *The Balanced GPU Node* — for general GPU work |
+| **barracuda** | 20 cores | 64 GB | 1x NVIDIA GV100 GPU | 🐬 *The Legacy GPU Node* — for general GPU work or lighter tasks (Note: incompatible with AWQ quantization) |
+| **vscode-node01** | 12 cores | 14.5 GB | Lightweight CPU node | 💻 *Interactive Code Node 1* — specifically for editing code or running very low-CPU tasks interactively |
+| **vscode-node02** | 8 cores | 31 GB | Lightweight CPU node | 💻 *Interactive Code Node 2* — specifically for editing code or running very low-CPU tasks interactively |
 
 ![The four Tramuntana nodes, each specialized for different types of work](images/tramuntana-nodes.png)
 
-Look at how different these are! **ada** has 256 CPU cores but no GPU — it's a pure CPU beast. **thor** has "only" 128 cores but packs 1.5 TB of RAM and 2 powerful GPUs ( remember that GPUs have their own memory, separate from the system RAM called VRAM ) — it's built for AI workloads that need both GPU power and huge memory. **pampero** has modest compute but 40TB of local storage. And **tramuntana-n1** is a well-rounded node with a single GPU.
+Look at how different these are! **ada** has 256 CPU cores but no GPU — it's a pure CPU beast. **thor** has "only" 128 cores but packs 1.5 TB of RAM and 2 powerful GPUs ( remember that GPUs have their own memory, separate from the system RAM called VRAM ) — it's built for AI workloads that need both GPU power and huge memory. **pampero** has modest compute but 40TB of local storage. **tramuntana-n1** and **barracuda** offer GPU capabilities for various workloads. And finally, **vscode-node01** and **vscode-node02** are specialized lightweight nodes designed specifically for interactive code editing and low-resource interactive tasks without taking up space on the heavy computation nodes.
 
-The four nodes above are the **compute nodes** — the ones that actually crunch your numbers. Now below are the nodes which are low on compute cores but high on storage capasity these are **storage nodes** and **login nodes** (tramuntana is not a storage node, it is special and is the login node, will explain later).
+The seven nodes above are the **compute nodes** — the ones that actually crunch your numbers. Now below are the nodes which are low on compute cores but high on storage capasity these are **storage nodes** and **login nodes** (tramuntana is not a storage node, it is special and is the login node, will explain later).
 
 | Node | Role | Key Specs | What It Does |
 |------|------|-----------|-------------|
 | **tramuntana** | 🚪 Login Node | 24 cores, 128GB RAM | This is the **front door** of the cluster. When you connect via SSH, you land here. It's also the SLURM controller — the brain that decides which compute node runs your job. **You should never run computations here** — it's only for logging in, writing scripts, and submitting jobs. |
 | **migjorn** | 💾 Fast Storage | 47TB (RAID5) | This is where your **home directory** (`/home/username/`) lives. It's fast storage optimized for your scripts, code, conda environments, and small datasets. Each user gets a 200GB quota. |
-| **tramuntana-nas** | 🗄️ Bulk Storage | 32 cores, 192GB RAM, 200TB (RAID6) | This is the **big warehouse** for shared data (`/data/`). Research groups store their large datasets here. Each group gets a 15TB shared quota. It has 32 CPU cores, but those are just for managing the storage system — not for your computations. |
+| **tramuntana-nas** | 🗄️ Bulk Storage | 32 cores, 192GB RAM, 200TB (RAID6) | This is the **big warehouse** for shared data (`/data/`). Research groups store their large datasets here. Each group gets a shared default starting storage quota (typically 15TB soft / 20TB hard limit; check anytime with `check_quota`). It has 32 CPU cores, but those are just for managing the storage system — not for your computations. |
 
 So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **4 compute nodes** (where your jobs run) + **2 storage servers** (where your files live). All connected through a fast 10 Gbps network.
 

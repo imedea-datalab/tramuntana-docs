@@ -13,6 +13,20 @@ If you work in a big research group, the data you need for your computations is 
 
 So in `/home` you will only store your codes, scripts and small data files that you personally need to run your jobs. In `/data` you will store all your group's large datasets. 
 
+### Checking Quotas & Understanding Limits
+
+You can check your research group's current storage usage in `/data` at any time from the login node (`tramuntana`) by running:
+```bash
+check_quota
+```
+This command displays an updated status report of your group's **Used Space**, **Soft Limit**, **Hard Limit**, and **Grace Period Timer**.
+
+#### Understanding Soft vs. Hard Limits
+* **Soft Limit (typically 15 TB):** An initial threshold that triggers a warning when crossed.
+* **Hard Limit (typically 20 TB):** The absolute maximum storage capacity you cannot exceed.
+* **The Grace Period (7 Days):** When your group's storage exceeds the Soft Limit (for example, reaching 16.5 TB), a 7-day countdown timer begins. In our HPC cluster, **when usage remains above the soft limit for longer than the 7-day grace period, the filesystem automatically locks the directory to prevent further writes**, even if you haven't hit the absolute hard limit yet!
+To regain write access once locked, you must either delete or archive enough files to drop back below the soft limit, or contact the system administrator to request a quota extension.
+
 But these folders (`/data` and `/home`) aren't really on the login node. They actually live on **completely different nodes** — the storage nodes we met in [Part 1](1-under-the-hood.md):
 
 But when you open the `/home` folder on your login node, you are actually looking directly at the hard drives over on the storage nodes. In real time the files are transferred to you over a cable and you read or see them. And each time you want to see them the data has to be fetched again ( if it is not in the memory or RAM ). So its not file sync its data streaming.
