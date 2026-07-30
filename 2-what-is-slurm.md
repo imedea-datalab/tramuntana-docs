@@ -47,7 +47,7 @@ So SLURM is a program that manages the cluster. But every program has to run on 
 
 The answer: **the login node**.
 
-Remember from [Part 1](1-under-the-hood.md) that the Tramuntana cluster has different types of nodes — compute nodes (ada, thor, pampero, tramuntana-n1), storage nodes (migjorn, tramuntana-nas), and one special node called simply **tramuntana**? That special node is the **login node**, and *this* is where SLURM lives.
+Remember from [Part 1](1-under-the-hood.md) that the Tramuntana cluster has different types of nodes — compute nodes (ada, thor, pampero, tramuntana-n1, barracuda, vscode-node01, vscode-node02), storage nodes (migjorn, tramuntana-nas), and one special node called simply **tramuntana**? That special node is the **login node**, and *this* is where SLURM lives.
 
 Here's how the whole flow works in practice:
 
@@ -61,7 +61,7 @@ So think of it as: **Your computer → Login node → Cluster**. You never inter
 
 But here's the critical rule — and I really can't stress this enough:
 
-> ⚠️ **NEVER run computations on the login node.** The login node is not for running your experiments, simulations, or training your models. It's only for managing and launching your work. It only has 2 CPUs. All the heavy lifting happens on the compute nodes (ada, thor, pampero, tramuntana-n1), and SLURM is the one who sends your work there. It only has very limited umber of CPUs (2 CPUs) which are only sufficient for running SLURM, sending your jobs to the Compute node and handling your activity while you are on that node (tramuntana) (your activities include bash commands etc).
+> ⚠️ **NEVER run computations on the login node.** The login node is not for running your experiments, simulations, or training your models. It's only for managing and launching your work. It only has 2 CPUs. All the heavy lifting happens on the compute nodes (ada, thor, pampero, tramuntana-n1, barracuda, vscode-node01, vscode-node02), and SLURM is the one who sends your work there. It only has very limited umber of CPUs (2 CPUs) which are only sufficient for running SLURM, sending your jobs to the Compute node and handling your activity while you are on that node (tramuntana) (your activities include bash commands etc).
 
 Think of it like the reception desk at a factory. You walk in, check in at reception, tell them what you need built — and then the factory workers (compute nodes) do the actual work. You wouldn't start welding metal at the reception desk, right? Same idea.
 
@@ -90,7 +90,7 @@ Let's zoom out and see the full picture of how you actually interact with the Tr
 
 ![SLURM Cluster Architecture Diagram](images/slurm-architecture.png)
 
-That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. Everything (the login node tramuntana, compute nodes (ada, thor, pampero, tramuntana-n1), and storage nodes (migjorn, tramuntana-nas)) is inter-connected through a fast 10 Gbps network. 
+That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **7 compute nodes** (where your jobs run) + **2 storage servers** (where your files live). All connected through a fast 10 Gbps network. 
 
 ---
 
@@ -104,9 +104,9 @@ Tramuntana has **three partitions**:
 
 | Partition | Which Nodes Can It Use? | Max Time | Priority | Best For |
 |-----------|-------------------------|----------|----------|----------|
-| **express** | All 4 compute nodes (ada, thor, pampero, tramuntana-n1) | 2 hours | ⚡ Highest (200) | Quick tests, debugging, compiling code |
-| **cpu** *(default)* | All 4 compute nodes | 10 days | Normal (50) | Long CPU-intensive jobs, R analyses, simulations |
-| **gpu** | Only tramuntana-n1 & thor (the ones with GPUs) | 10 days | High (100) | AI/ML training, GPU-accelerated computing |
+| **express** | All 7 compute nodes | 2 hours | ⚡ Highest (200) | Quick tests, debugging, compiling code |
+| **cpu** *(default)* | All 7 compute nodes | 10 days | Normal (50) | Long CPU-intensive jobs, R analyses, simulations |
+| **gpu** | Only tramuntana-n1, thor & barracuda (the ones with GPUs) | 10 days | High (100) | AI/ML training, GPU-accelerated computing |
 
 **How to pick one:**
 - Need a quick 30-minute test? Use `--partition=express`. It gets higher priority so you won't wait long.

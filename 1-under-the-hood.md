@@ -114,7 +114,9 @@ Some nodes don't just have CPUs — they also have **GPUs (Graphics Processing U
 ### Meet the Tramuntana Nodes
 
 This is exactly how the Tramuntana cluster at IMEDEA is set up. It has 7 compute nodes, each with a different specialty:
+
 This table may look intimidating, but don't worry about it. You'll learn which node is right for you and the technical terms explained in the later sections of this guide.
+
 | Node | Cores (CPU) | Memory (RAM) | Special | Best For |
 |------|-------|-------------|---------|----------|
 | **ada** | 256 cores | 768 GB | 7TB NVMe scratch storage | 🏋️ *The CPU Powerhouse* — when you need massive parallelism |

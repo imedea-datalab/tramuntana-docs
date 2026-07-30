@@ -253,9 +253,10 @@ check_cpu_ram
 
 ## 3. GPU Jobs on Tramuntana
 
-Only two nodes have GPUs:
+Only three nodes have GPUs:
 - **tramuntana-n1**: 1× NVIDIA L40S (48 GB VRAM)
 - **thor**: 2× NVIDIA RTX 6000 Ada (48 GB VRAM each)
+- **barracuda**: 1x NVIDIA GV100 (32 GB VRAM)
 
 **💡 Tip:** To quickly check how much GPU memory is currently free across the cluster, run:
 ```bash
@@ -351,7 +352,7 @@ Use this to make sure you haven't missed a step, from first connection to finish
 - [ ] Use `--partition=gpu`
 - [ ] Use `--gres=gpu_mem:N` (**not** `--gres=gpu:1` — that silently caps you at 12 GB)
 - [ ] Check available VRAM with `check_gpu` before submitting
-- [ ] Optionally use `--nodelist=thor` or `--nodelist=tramuntana-n1` for a specific GPU
+- [ ] Optionally use `--nodelist=thor`, `--nodelist=tramuntana-n1`, or `--nodelist=barracuda` for a specific GPU
 
 **🚀 5. Submit & Monitor**
 - [ ] Check available CPU/RAM with `check_cpu_ram` before submitting
