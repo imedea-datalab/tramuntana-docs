@@ -39,6 +39,12 @@ ssh your-username@10.33.0.143
 ```
 > ⚠️ **Note**: When prompted for a password, type your IMEDEA credentials. As a security feature, **nothing will appear on the screen** while you type. Just type it and press Enter.
 
+> [!IMPORTANT]
+> **You cannot SSH directly into compute nodes (like `thor` or `pampero`) from the login node anymore.** 
+> For security and resource tracking, you must first request resources using `salloc` or `sbatch`. Only then will the system allow you to SSH into the specific node where your job is running.
+> 
+> **Remember**: when you use `salloc` to request resources, that allocation is tied directly to your active terminal window. If you close your laptop (or your SSH or internet connection broke), Slurm instantly cancels your job to free up the resources. Then the system says you didn't have an allocated job when you try to SSH into a node again. To fix this and keep your session running in the background even when you disconnect your laptop, you need to use a tool called `tmux` as described further down in the guide.
+
 ---
 
 ## 2. Running Jobs with SLURM
@@ -112,6 +118,9 @@ sbatch my_job.slurm
 | `--mail-type=END,FAIL` | When to email you. `END` = when it finishes. `FAIL` = if it crashes. You can also add `BEGIN` to get emailed when it starts. |
 | `--mail-user=...` | Where to send those email notifications. |
 
+> [!NOTE]
+> **Maximum Time Limit:** Currently, the maximum allowed `--time` for both `gpu` and `cpu` partitions is **30 days** (`30-00:00:00`). However, please note that this is a **temporary** measure and it will be reduced to 10 days in the near future.
+
 ---
 
 ### B. `salloc` — Interactive Resource Reservation
@@ -141,6 +150,19 @@ ssh thor    # or whatever node was assigned
 ```
 
 > ⚠️ **Warning:** If you lose your internet connection (Wi-Fi drops, laptop closes), your `salloc` session is killed instantly and your reservation is released. This is a live connection — there's no "reconnect."
+
+> [!CAUTION]
+> **Strict Resource Isolation (CPU vs GPU)**
+> When you SSH into a compute node, you are securely locked into the resources you requested. If you only allocated CPUs, **you cannot see or use the GPUs** — even if the node has them. If you need a GPU during your interactive session, you *must* request it during allocation (e.g., `--gres=gpu_mem:8`).
+
+> [!TIP]
+> **What happens if you have multiple jobs on the same node?**
+> By default, you cannot choose which job you enter when you SSH. The system will automatically drop you into the most recently started job. 
+> If you have multiple jobs running on the same node (e.g., a background job and an `salloc` session) and want to enter a specific one, do **not** use standard SSH. Instead, use Slurm's built-in command to attach a terminal to a specific job ID:
+> ```bash
+> srun --jobid=<THE_JOB_ID> --pty bash
+> ```
+> This bypasses SSH guesswork and drops you exactly into the job you want!
 
 ---
 
