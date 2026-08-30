@@ -19,7 +19,8 @@ This guide contains the absolute essentials. For more detailed topics, check out
 |   | — [C. `srun` — Running Commands & Parallel Computing](#c-srun--running-commands--parallel-computing) |
 |   | — [Which one should I use?](#which-one-should-i-use-the-decision-tree) |
 | 3. | [GPU Jobs on Tramuntana](#3-gpu-jobs-on-tramuntana) |
-| 4. | [Getting Set & Go — Quick Checklist](#4-getting-set--go--quick-checklist) |
+| 4. | [Resource Profiling (`tramuntana-profile`)](#4-resource-profiling-tramuntana-profile) |
+| 5. | [Getting Set & Go — Quick Checklist](#5-getting-set--go--quick-checklist) |
 
 ---
 
@@ -130,13 +131,29 @@ Sometimes you don't want to submit a script and walk away — you want to sit at
 `salloc` tells SLURM: *"Hey, reserve me some resources. I want to use them manually, right now."*
 
 ```bash
-salloc --cpus-per-task=4 --mem=16G --time=02:00:00
+salloc --cpus-per-task=4 --mem=20G --time=24:00:00 --nodelist=thor --partition=gpu --gres=gpu_mem:40 
 ```
 
 > [!NOTE]
 > **What is a "shell"?** When you open your terminal app (like Terminal on Mac, or a PuTTY window), the program running *inside* that window is called a **shell** — it's the thing that reads what you type, interprets the command, and tells the operating system what to do. Common shells are **Bash** and **Zsh**. The terminal is just the window; the shell is the brain inside it. When we say SLURM gives you a "new shell session," it means a fresh instance of that command-reading program — ready for you to type into.
 
-Your terminal will pause while SLURM looks for available resources. Once granted, you get a new shell session. Here's the important part: **your terminal prompt will look the same** — you're still technically on the login node. But SLURM has now officially booked resources for you on a compute node. You can then SSH into that compute node and run your code there, knowing that those resources are protected and reserved just for you.
+Your terminal will pause while SLURM looks for available resources. Once granted, you get a new shell session. Here's the important part: **your terminal prompt will look the same** — you're still technically on the login node (`tramuntana`). But SLURM has now officially booked resources for you on a compute node. 
+
+> [!CAUTION]
+> **⚠️ Do NOT run heavy computations or Python/GPU scripts in this shell directly!**
+> The `salloc` command starts a subshell located physically on **the login node (`tramuntana`)**, NOT on the compute node.
+> - If you execute `python my_script.py` directly in this shell, it runs on the login node's CPU, consuming shared head-node resources and failing to access any GPU hardware.
+> - **How to actually run your code on the allocated node:**
+>   1. **Use `srun` (Recommended):** Run one-off commands or open an interactive compute shell directly:
+>      ```bash
+>      srun --pty bash          # Opens a shell on the allocated compute node
+>      srun python my_script.py # Runs the script directly on the compute node
+>      ```
+>   2. **Or SSH to the allocated node:** Check the assigned node and SSH into it:
+>      ```bash
+>      squeue -u $USER          # Check NODELIST (e.g. thor)
+>      ssh thor                 # Connects to the node; Slurm adopts your session into the job
+>      ```
 
 To see which node was assigned to you:
 ```bash
@@ -346,7 +363,110 @@ Multiple people can share the same physical GPU on Tramuntana. When you request 
 
 ---
 
-## 4. Getting Set & Go — Quick Checklist
+## 4. Resource Profiling (`tramuntana-profile`)
+
+To help users find the optimal `#SBATCH` resource limits for their jobs without guessing, the cluster provides a profiling tool called `tramuntana-profile`. do `tramuntana-profile -h` to see the available options.
+
+### How It Works
+
+The profiler runs your SLURM script and tracks actual resource usage (CPU cores, System RAM, and GPU VRAM). It then outputs a report with exact `#SBATCH` parameters you should use for future runs, including a safety buffer to ensure stability. It reports in the output file and terminal, so specify your output and error filepaths in the script.
+
+- **System RAM (Auto-Recovery):** The profiler starts with a low default allocation (2GB RAM). If your job fails due to an Out-Of-Memory (OOM) error, it automatically doubles the RAM allocation and retries until the job succeeds (or reaches the memory ceiling).
+- **CPU Scaling (Two-Phase Optimization):**
+  1. **Phase 1 — Exponential Doubling (Coarse Probing):** The profiler starts at 2 CPUs (or `--start-cpu`). It tests doubling the cores (2 -> 4 -> 8 -> 16 -> 32). As long as doubling cores gives at least a **1.3x speedup** (at least 30% faster execution), it assumes the code scales well and continues scaling up.
+  2. **Phase 2 — Binary Search Refinement (Fine Tuning):** When diminishing returns are detected (e.g., speedup drops below the threshold at 32 CPUs), the profiler freezes the search range between the highest passing core count (`low_cpu = 16`) and the failed core count (`high_cpu = 32`). It tests the midpoint (24 CPUs):
+     - If 24 CPUs passes, the new lower bound becomes 24, and it tests upwards (28 CPUs).
+     - If 28 CPUs fails, all higher counts (28, 29, 30, 31, 32) are eliminated, and it searches downwards.
+     - This finds the optimal core count in just a few iterations without testing every individual number.
+- **Profiling Long Jobs (`--sample-time` / `-t`):** For jobs that run for many hours or days (e.g., deep learning training or long simulations), you do not need to wait for the entire job to finish. Pass a sample duration like `--sample-time 30s`, `-t 1m`, or `-t 5m`. The profiler runs each candidate core count for that duration, measures actual computational core throughput (active CPU core rate) and peak RAM/VRAM, stops the sample cleanly, and executes the scaling decisions automatically.
+  > [!IMPORTANT]
+  > **The 20–30 Second Computation Rule:**
+  > The profiler measures real CPU speedup and core utilization. To get an accurate, reliable estimate, your job needs **at least 20–30 seconds of active mathematical computation**:
+  > - **Why very short scripts (<10s) skew results:** If your script finishes in only 4–8 seconds, natural cluster I/O jitter, interpreter startup (Python/R), and SLURM daemon overhead will dominate the execution time. A 2-second fluctuation can look like a false speedup (e.g. $8\text{s} \to 6\text{s} = 1.33\times$), which might trick the scaling loop on a single-threaded program.
+  > - **Best Practice Workflow:**
+  >   1. Run your script once or check how long a single iteration/epoch takes.
+  >   2. **For long jobs (minutes/hours):** Use `-t 30s` (or `-t 1m` / `-t 5m`) to sample a clean window of continuous computation.
+  >   3. **For quick benchmarks/test scripts:** Ensure the computation loop runs long enough (at least 20–30 seconds), or adjust `-t` accordingly so the math computation clearly outweighs startup overhead.
+- **GPU VRAM:** If a GPU is requested, the profiler does *not* do a gradual allocation. Instead, it temporarily allocates a massive 48GB of VRAM to ensure the job doesn't crash, runs the code once, and observes the peak VRAM used in the background using `nvidia-smi`. 
+```bash
+tramuntana-profile --gpu test_profiler_limits.slurm
+```
+- **Safety Buffers:** The final recommended limits include a safety buffer on top of the actual peak usage. For RAM and VRAM, the buffer is +20% or +2GB (whichever is larger). For CPUs, it recommends the highest verified core count that demonstrated good scaling.
+
+### Limits and Overrides
+
+- Upper Limits (Ceilings): If your `.slurm` script already contains `#SBATCH --mem=...` or `#SBATCH --cpus-per-task=...`, the profiler will use these as hard ceilings. It will never allocate more resources than your ceiling during its auto-scaling loop. If you don't specify any, it defaults to the Admin Ceilings (32 CPUs and 64GB RAM). If your code is still scaling well at 32 CPUs, increase `--cpus-per-task` in your script to allow the profiler to test higher limits.
+- **Start Values:** You can bypass the low starting defaults (2 CPUs / 2GB RAM) using CLI arguments if you already know your job needs more.
+
+### Profiling Job Arrays (`--array`)
+
+In SLURM, all resource directives (`--cpus-per-task`, `--mem`, `--gres`) are allocated **per individual array task**, not divided across the whole array.
+
+To profile an array job:
+1. **Profile as a standalone script:** Run `tramuntana-profile` on a single representative task or a single combination of your parameters.
+2. **Apply recommended limits to your array script:** Take the suggested `#SBATCH` parameters from the profiler report (for each of your parameter combinations) and put them into your final script alongside `#SBATCH --array=1-N`. In your workload, index your inputs and parameters using `$SLURM_ARRAY_TASK_ID` to ensure each task runs with its own set of optimized resources. Also use this index inside your code  ( python,C, R etc ) to automatically load appropriate data, run appropriate section of the code or give appropriate inputs (like different hyper-parameters for different tasks). 
+3. **Use fallback defaults:** Ensure your code falls back cleanly if `$SLURM_ARRAY_TASK_ID` is unset:
+   - **Bash:** `TASK_ID=${SLURM_ARRAY_TASK_ID:-1}`
+   - **Python:** `task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "1")`
+   - **R:** `task_id <- Sys.getenv("SLURM_ARRAY_TASK_ID", "1")`
+
+
+### Profiling MPI Jobs
+
+> [!NOTE]
+> **MPI Profiling Output vs `#SBATCH` Parameters**
+> When profiling MPI workloads, the profiler will suggest an optimal `#SBATCH --cpus-per-task=N`. However, inside your MPI script (e.g., [`test_mpi_scaling.slurm`](file:///home/atiwari/Downloads/projects/Tramuntana-tests/scripts/slurm/c/test_mpi_scaling.slurm)), this number actually represents the **total number of processes** (MPI ranks) rather than threads per process. 
+> Depending on your launcher, you should map this number to the process count:
+> - For `mpirun`/`mpiexec`: `mpirun -np $SLURM_CPUS_PER_TASK ...`
+> - For `srun`: `srun -n $SLURM_CPUS_PER_TASK --cpus-per-task=1 ...` (Notice that the actual `--cpus-per-task` argument passed directly to the `srun` command is strictly `1`).
+> 
+**Example implementation:**
+```bash 
+# Determine number of MPI ranks from SLURM allocation
+NUM_PROCS=${SLURM_CPUS_PER_TASK:-${SLURM_NTASKS:-4}}
+
+echo "Launching C MPI job with $NUM_PROCS ranks..."
+if command -v mpirun &>/dev/null; then
+    mpirun --oversubscribe -np "$NUM_PROCS" ./scripts/c/bin/test_mpi_scaling
+elif command -v mpiexec &>/dev/null; then
+    mpiexec --oversubscribe -n "$NUM_PROCS" ./scripts/c/bin/test_mpi_scaling
+elif command -v srun &>/dev/null && [ -n "$SLURM_JOB_ID" ]; then
+    srun -n "$NUM_PROCS" --cpus-per-task=1 ./scripts/c/bin/test_mpi_scaling
+else
+    ./scripts/c/bin/test_mpi_scaling
+fi
+```
+
+
+### How to Run
+
+Simply pass your SLURM script to the profiler:
+```bash
+tramuntana-profile my_script.slurm
+```
+
+**Profile Long Running Jobs (e.g. 5 minute sample per test):**
+```bash
+tramuntana-profile -t 5m my_long_job.slurm
+```
+
+**Run in Background (Recommended):**
+Since profiling can take multiple retries and time, you can run it in the background and safely close your terminal. It will output a log file in your specified output directory:
+```bash
+tramuntana-profile -bg my_script.slurm
+```
+
+**Common Flags:**
+- `--sample-time <duration>` / `-t <duration>`: Sample duration for long jobs before stopping (e.g. `5m`, `10m`, `300s`, `1h`).
+- `--min-speedup <float>`: Target speedup required when doubling CPUs (default: `1.30` = 30% faster).
+- `--start-cpu <N>`: Start the CPU auto-scaling loop at N cores instead of 2.
+- `--start-mem <N>`: Start the RAM auto-scaling loop at N GB instead of 2.
+- `--gpu`: Force GPU VRAM profiling, even if your script doesn't explicitly request a GPU partition.
+- `--background` / `-bg`: Run the profiler detached in the background.
+
+---
+
+## 5. Getting Set & Go — Quick Checklist
 
 Use this to make sure you haven't missed a step, from first connection to finished job.
 

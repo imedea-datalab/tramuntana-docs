@@ -353,6 +353,27 @@ SLURM creates 5 independent jobs. Each one gets its own GPU, its own 16 GB of RA
 #SBATCH --array=0-20:5         # Tasks 0, 5, 10, 15, 20 (step size of 5)
 ```
 
+### Profiling and Sizing Job Arrays
+
+Because SLURM applies resource directives (`--cpus-per-task`, `--mem`, `--gres=gpu_mem:...`) **per individual array task**, do not profile all array tasks at once.
+
+**Recommended Workflow:**
+1. **Profile an individual task first:** Run `tramuntana-profile` on your script as a standalone single job (or test your heaviest representative parameter).
+2. **Include fallback defaults in your script:** Ensure your script runs cleanly when `$SLURM_ARRAY_TASK_ID` is not yet set by SLURM:
+   ```bash
+   # In Bash:
+   TASK_ID=${SLURM_ARRAY_TASK_ID:-1}
+   ```
+   ```python
+   # In Python:
+   task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "1")
+   ```
+   ```r
+   # In R:
+   task_id <- Sys.getenv("SLURM_ARRAY_TASK_ID", "1")
+   ```
+3. **Index resources into the final array script:** Take the exact resources recommended by the profiler report (e.g. `--cpus-per-task=4`, `--mem=8G`), add `#SBATCH --array=1-N` to the header, and index your parameter sweeps using `$SLURM_ARRAY_TASK_ID`.
+
 ---
 
 ## 4. Commands & Monitoring Reference
