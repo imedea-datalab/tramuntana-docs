@@ -367,6 +367,21 @@ Multiple people can share the same physical GPU on Tramuntana. When you request 
 
 To help users find the optimal `#SBATCH` resource limits for their jobs without guessing, the cluster provides a profiling tool called `tramuntana-profile`. do `tramuntana-profile -h` to see the available options.
 
+> [!IMPORTANT]
+> **Start with a Minimal Script**
+> When profiling a new job, start with a minimal SLURM script containing only the job name, output, and error paths. **Do not specify `--cpus-per-task`, `--mem`, or `--time`** unless you explicitly want to set hard upper limits (ceilings) that the profiler cannot exceed. Providing extra `#SBATCH` directives can create issues for the profiler's auto-scaling logic.
+> 
+> **Example minimal script:**
+> ```bash
+> #!/bin/bash
+> #SBATCH --job-name=test_cpu_odd_threads
+> #SBATCH --output=/path_to_output/%j.out
+> #SBATCH --error=/path_to_output/%j.err
+> 
+> echo "Running Test 2.2: Odd-Number Process Scaling..."
+> uv run python scripts/python/test_cpu_odd_threads.py
+> ```
+
 ### How It Works
 
 The profiler runs your SLURM script and tracks actual resource usage (CPU cores, System RAM, and GPU VRAM). It then outputs a report with exact `#SBATCH` parameters you should use for future runs, including a safety buffer to ensure stability. It reports in the output file and terminal, so specify your output and error filepaths in the script.
