@@ -402,7 +402,7 @@ The profiler runs your SLURM script and tracks actual resource usage (CPU cores,
   >   1. Run your script once or check how long a single iteration/epoch takes.
   >   2. **For long jobs (minutes/hours):** Use `-t 30s` (or `-t 1m` / `-t 5m`) to sample a clean window of continuous computation.
   >   3. **For quick benchmarks/test scripts:** Ensure the computation loop runs long enough (at least 20–30 seconds), or adjust `-t` accordingly so the math computation clearly outweighs startup overhead.
-- **GPU VRAM:** If a GPU is requested, the profiler does *not* do a gradual allocation. Instead, it temporarily allocates a massive 48GB of VRAM to ensure the job doesn't crash, runs the code once, and observes the peak VRAM used in the background using `nvidia-smi`. 
+- **GPU VRAM:** The profiler honors your script's `--gres=gpu_mem:X` request. If you ask for a GPU without specifying an amount, it defaults to 12 GB. It accurately measures VRAM specifically for your job (isolated from other users sharing the GPU), ensuring the recommendation is not inflated.
 ```bash
 tramuntana-profile --gpu test_profiler_limits.slurm
 ```
@@ -410,7 +410,8 @@ tramuntana-profile --gpu test_profiler_limits.slurm
 
 ### Limits and Overrides
 
-- Upper Limits (Ceilings): If your `.slurm` script already contains `#SBATCH --mem=...` or `#SBATCH --cpus-per-task=...`, the profiler will use these as hard ceilings. It will never allocate more resources than your ceiling during its auto-scaling loop. If you don't specify any, it defaults to the Admin Ceilings (32 CPUs and 64GB RAM). If your code is still scaling well at 32 CPUs, increase `--cpus-per-task` in your script to allow the profiler to test higher limits.
+- **Partition and Time:** The profiler strictly honors the `--partition` and `--time` specified in your script. It only falls back to the `express` partition (2-hour limit) if your script specifies neither. Note: If your script's time limit exceeds the partition's maximum allowed time, the profiler will refuse to run to prevent infinite hangs. For long jobs, use `--sample-time` instead.
+- **Upper Limits (Ceilings):** If your `.slurm` script already contains `#SBATCH --mem=...` or `#SBATCH --cpus-per-task=...`, the profiler will use these as hard ceilings. It will never allocate more resources than your ceiling during its auto-scaling loop. If you don't specify any, it defaults to the Admin Ceilings (32 CPUs and 64GB RAM). If your code is still scaling well at 32 CPUs, increase `--cpus-per-task` in your script to allow the profiler to test higher limits.
 - **Start Values:** You can bypass the low starting defaults (2 CPUs / 2GB RAM) using CLI arguments if you already know your job needs more.
 
 ### Profiling Job Arrays (`--array`)
