@@ -122,6 +122,10 @@ sbatch my_job.slurm
 > [!NOTE]
 > **Maximum Time Limit:** Currently, the maximum allowed `--time` for both `gpu` and `cpu` partitions is **30 days** (`30-00:00:00`). However, please note that this is a **temporary** measure and it will be reduced to 10 days in the near future.
 
+> [!TIP]
+> **Want to peek inside your running job to check live CPU or GPU usage?**  
+> You can monitor live CPU core utilization with `srun --jobid=<id> --overlap --pty htop -u $USER` or check GPU VRAM with `nvidia-smi`. See the full [Peeking Inside a Running Job guide in Commands In-Depth](0b-commands-in-depth.md#step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu).
+
 ---
 
 ### B. `salloc` — Interactive Resource Reservation
@@ -368,6 +372,24 @@ Multiple people can share the same physical GPU on Tramuntana. When you request 
 To help users find the optimal `#SBATCH` resource limits for their jobs without guessing, the cluster provides a profiling tool called `tramuntana-profile`. do `tramuntana-profile -h` to see the available options.
 
 > [!IMPORTANT]
+> **Prerequisite: Verify Your Script Runs Without Errors First!**
+> Before giving any script to `tramuntana-profile`, make sure your SLURM script runs cleanly without the profiler and does not crash from code errors (e.g. syntax errors, missing Python/R packages, incorrect arguments, or bad filepaths).
+> 
+> **How to verify:**
+> - **Test it with `sbatch`:** Run `sbatch my_job.slurm` directly.
+> - **For long jobs (hours or days):** You **do not** need to wait for the entire job to finish! A short **3–5 minute sanity test** is completely fine:
+>   1. Submit: `sbatch my_job.slurm` (note the job ID).
+>   2. Check `squeue -u $USER` to confirm it moves from `PENDING` to `RUNNING`.
+>   3. Watch initial logs: `tail -f output_<jobid>.txt` to verify it passes startup initialization without crashing.
+>   4. Peek inside to verify it is actually doing computation and using the allocated CPUs or GPUs (see [Peeking Inside a Running Job in Commands In-Depth](0b-commands-in-depth.md#step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu)):
+>      - **CPU jobs:** `srun --jobid=<jobid> --overlap --pty htop -u $USER`
+>      - **GPU jobs:** `srun --jobid=<jobid> --overlap --pty nvidia-smi`
+>   5. Once you confirm it is running cleanly and utilizing resources, stop it with `scancel <jobid>`.
+> - **Now run the profiler:** Once verified, submit it to `tramuntana-profile` (use `--sample-time` / `-t` if it is a long job).
+> 
+> *Why is this necessary?* The profiler's job is to optimize **hardware limits** (CPU cores, RAM OOM doubling, VRAM). If your underlying code has a bug (like an `ImportError` or file not found), the profiler cannot fix your code and will either fail or mistake the crash for an error.
+
+> [!IMPORTANT]
 > **Start with a Minimal Script**
 > When profiling a new job, start with a minimal SLURM script containing only the job name, output, and error paths. **Do not specify `--cpus-per-task`, `--mem`, or `--time`** unless you explicitly want to set hard upper limits (ceilings) that the profiler cannot exceed. Providing extra `#SBATCH` directives can create issues for the profiler's auto-scaling logic.
 > 
@@ -517,7 +539,9 @@ Use this to make sure you haven't missed a step, from first connection to finish
 - [ ] Submit: `sbatch my_job.slurm` — note the job ID
 - [ ] Check status: `squeue -u $USER`
 - [ ] Watch output live: `tail -f output_<jobid>.txt`
-- [ ] For GPU jobs, peek with: `srun --jobid=<id> --overlap --pty nvidia-smi`
+- [ ] For CPU jobs, peek at core usage: `srun --jobid=<id> --overlap --pty htop -u $USER`
+- [ ] For GPU jobs, peek at VRAM/GPU: `srun --jobid=<id> --overlap --pty nvidia-smi`
+- [ ] Or open a shell inside the running job: `srun --jobid=<id> --overlap --pty bash`
 
 **📊 6. After the Job**
 - [ ] Review efficiency: `seff <jobid>` — are you over/under-requesting resources?
