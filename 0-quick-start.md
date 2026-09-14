@@ -126,6 +126,12 @@ sbatch my_job.slurm
 > **Want to peek inside your running job to check live CPU or GPU usage?**  
 > You can monitor live CPU core utilization with `srun --jobid=<id> --overlap --pty htop -u $USER` or check GPU VRAM with `nvidia-smi`. See the full [Peeking Inside a Running Job guide in Commands In-Depth](0b-commands-in-depth.md#step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu).
 
+>[!TIP]
+> **Please read these documents**
+> Once you have submitted job and it is running, it is good idea to read these documents to understand how can you see infromation about your job -
+> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md). 
+> - Especially [**Commands & Monitoring Reference**](#4-commands--monitoring-reference).
+
 ---
 
 ### B. `salloc` — Interactive Resource Reservation
@@ -184,6 +190,12 @@ ssh thor    # or whatever node was assigned
 > srun --jobid=<THE_JOB_ID> --pty bash
 > ```
 > This bypasses SSH guesswork and drops you exactly into the job you want!
+
+>[!TIP]
+> **Please read these documents**
+> Once you have submitted job and it is running, it is good idea to read these documents to understand how can you see infromation about your job -
+> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md). 
+> - Especially [**Commands & Monitoring Reference**](#4-commands--monitoring-reference).
 
 ---
 
@@ -270,6 +282,12 @@ Whenever you execute `srun`, Slurm creates a "Job Step" within the overarching a
 - (Even when you use `srun --pty bash` interactively, Slurm creates a Job Step just to run the bash terminal process. Once that terminal process exits, the Job Step is marked as completed, and Slurm terminates anything else attached to it).
 
 Because of this, you can use `srun` multiple times within a single `.slurm` file, and Slurm will track these sub-processes individually. You can use the command `sstat -j <jobid> -a --format=JobID,AveCPU,MaxRSS` to see the exact real-time RAM and CPU usage of each specific job step.
+
+>[!TIP]
+> **Please read these documents**
+> Once you have submitted job and it is running, it is good idea to read these documents to understand how can you see infromation about your job -
+> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md). 
+> - Especially [**Commands & Monitoring Reference**](#4-commands--monitoring-reference).
 
 ---
 
