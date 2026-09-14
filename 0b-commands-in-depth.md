@@ -212,15 +212,31 @@ squeue -u $USER
 ```
 This shows your jobs and which nodes they're on.
 
-### Step 3: Peek inside a running GPU job
+### Step 3: Peek inside a running job (Monitoring Live CPU & GPU)
 
-To see the live GPU status on the node where your job is running, you can "hop into" the job using `srun --jobid`:
+Once your job is running, you can "peek" inside from the login node to check how many of your allocated resources (CPUs or GPUs) your code is actually utilizing:
+
+#### A. Live CPU Utilization (`htop` or `top`)
+To see live CPU core utilization, load, and thread activity for your job's processes:
+
+```bash
+# Interactive CPU & process monitor (htop):
+srun --jobid=<YOUR_JOB_ID> --overlap --pty htop -u $USER
+
+# Or standard top:
+srun --jobid=<YOUR_JOB_ID> --overlap --pty top -u $USER
+```
+- **How `--overlap` works:** It tells SLURM to share the CPUs already allocated to your running job so you can launch `htop` without requesting extra resources or queuing.
+- **Reading the numbers:** In `htop`, the top bars show CPU activity. If your code is multi-threaded and using 4 cores at 100%, `htop` will show `400% CPU` for your process. Press `q` to exit `htop` anytime without interrupting your job.
+
+#### B. Live GPU Utilization (`nvidia-smi`)
+To see live GPU status and VRAM consumption on the node where your job is running:
 
 ```bash
 srun --jobid=<YOUR_JOB_ID> --overlap --pty nvidia-smi
 ```
 
-This runs `nvidia-smi` inside your existing job's allocation (using `--overlap` to share the same resources — it doesn't request new ones). You'll see output like this:
+This runs `nvidia-smi` inside your existing job's allocation. You'll see output like this:
 
 ```
 +-----------------------------------------------------------------------------------------+
@@ -244,6 +260,21 @@ This runs `nvidia-smi` inside your existing job's allocation (using `--overlap` 
 ```
 
 The `Processes` table at the bottom shows you each job's actual VRAM consumption — `8192MiB` means that process is using ~8 GB of the GPU's 48 GB.
+
+#### C. Hop Directly into the Compute Node with an Interactive Shell
+Want full interactive terminal access on the compute node where your job is executing?
+```bash
+srun --jobid=<YOUR_JOB_ID> --overlap --pty bash
+```
+This drops you directly into an interactive shell inside your job allocation on that compute node. You can run `htop`, `nvidia-smi`, `ps aux`, or inspect temporary files. Type `exit` when you are done.
+
+#### D. Alternative: SSH into the Compute Node
+Check which node your job is running on (`squeue -u $USER` under `NODELIST`, e.g. `thor`), then SSH directly to it from `tramuntana`:
+```bash
+ssh thor
+htop -u $USER
+```
+Thanks to `pam_slurm_adopt`, Slurm automatically attaches your SSH connection into your job's cgroup container.
 
 ### Step 3b: Quick GPU eavesdrop (without an existing job)
 
@@ -277,14 +308,19 @@ seff <job_id>
 
 You generally do **not** need `--overlap` for a basic interactive session. The main use case is when you've allocated resources, started a long-running job, and then want to run a second command (like `nvidia-smi`) on that same allocation *at the same time*, sharing the same CPUs. Without `--overlap`, SLURM would block the second command because the CPUs are already in use.
 
-**Example:**
+**Examples:**
 ```bash
-# You have a training job running as job 12345.
-# You want to check GPU status without stopping it:
+# Check live GPU status without stopping your job:
 srun --jobid=12345 --overlap --pty nvidia-smi
+
+# Check live CPU & process activity (htop) without stopping your job:
+srun --jobid=12345 --overlap --pty htop -u $USER
+
+# Or hop directly into an interactive shell inside your running job:
+srun --jobid=12345 --overlap --pty bash
 ```
 
-This is the main reason you see `--overlap` in the GPU monitoring commands above — it lets you "eavesdrop" on your own running job without interfering with it.
+This is the main reason you see `--overlap` in the monitoring commands above — it lets you "eavesdrop" on your own running job without interfering with it.
 
 ---
 
