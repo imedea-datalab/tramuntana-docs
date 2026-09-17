@@ -1,12 +1,12 @@
 # Open OnDemand: Interactive Apps
 
-Open OnDemand (OOD) provides a user-friendly web interface to the Tramuntana cluster. You can launch interactive sessions like **MATLAB**, **VS Code**, **RStudio**, and the **AI Chatbot (RAG)** directly from your browser, without needing to use the command line or write SLURM scripts manually.
+Open OnDemand (OOD) provides a user-friendly web interface to the Tramuntana cluster. You can launch interactive sessions like **MATLAB**, **VS Code**, **RStudio**, the **AI Chatbot (RAG)**, and **Interactive Compute Allocations (SSH / Shell)** directly from your browser, without needing to use the command line or write SLURM scripts manually.
 
 ## 🔗 How to Access
 
 1. **Link**: Go to [https://10.33.0.143/](https://10.33.0.143/) in your web browser. *(Note: You must be connected to the IMEDEA network or VPN).*
 2. **Login**: Use your standard IMEDEA username and password.
-3. **Launch Apps**: In the top navigation bar, click on **Interactive Apps** and select the application you want to launch (e.g., MATLAB, VS Code, or RStudio).
+3. **Launch Apps**: In the top navigation bar, click on **Interactive Apps** and select the application you want to launch (e.g., MATLAB, VS Code, RStudio, or Interactive Compute Allocation).
 
 ## 📁 Web File Explorer: Managing Files in `/home` and `/data`
 
@@ -67,6 +67,27 @@ Here is an explanation of the typical input fields:
 > **Note on GPU Support (MATLAB vs RStudio):** Unlike RStudio (which automatically enables GPU acceleration via NVIDIA drivers when a GPU partition is selected), **MATLAB currently cannot use the GPU**. The deployed MATLAB versions require an additional license and do not include the Parallel Computing Toolbox. Consequently, native MATLAB GPU commands (like `gpuDeviceCount` or `gpuArray`) will not work out of the box, even if you select a GPU node like `barracuda`. If you require GPU acceleration inside MATLAB, please contact datalab to discuss custom licensing or container builds.
 
 Once you fill out the form, click **Launch**. Your job will be placed in the SLURM queue. Once resources are available, the status will change to "Running," and you can click **Connect** to open the interface in a new tab.
+
+## ⚡ Interactive Compute Allocation (SSH & Web Shell without Heavy Apps)
+
+If you need dedicated compute resources (CPUs, RAM, or GPUs) to run command-line tools, Python scripts, or connect your local **VS Code Desktop (via Remote-SSH)**, you do **not** need to launch heavyweight web applications like VS Code or MATLAB!
+
+You can use the **Interactive Compute Allocation (SSH)** app directly in Open OnDemand:
+
+### Why use this instead of CLI `salloc`?
+- **No Complex CLI Arguments:** Select your partition, specific node, CPU count, RAM, and GPU memory using simple dropdowns and sliders instead of typing long `salloc` commands.
+- **Safe from Wi-Fi Disconnections:** When you run `salloc` in your local terminal, closing your laptop or losing Wi-Fi immediately terminates your reservation. In Open OnDemand, the allocation runs on the cluster as a Slurm batch job; it stays active even if your laptop sleeps or your browser closes!
+- **Zero Overhead:** No heavy daemons (`code-server`, VNC, MATLAB runtime) are started on the compute node. All allocated CPU and RAM remain 100% available for your actual work.
+
+### How to use:
+1. In the top navigation bar, click **Interactive Apps** → **Interactive Compute Allocation (SSH)**.
+2. Select your desired resources (CPUs, RAM, GPU memory, walltime, and target node).
+3. Click **Launch**.
+4. Once the session card turns green (**Running**), you have three easy ways to connect:
+   - **One-Click Web Terminal:** Click **"Open Web Terminal on `<node>`"** to open a live browser shell directly inside your allocated compute node.
+   - **From Your Local Terminal or Login Node:** Copy the provided command (`ssh <node>`). Slurm's `pam_slurm_adopt` will automatically detect your allocation and confine your shell to your reserved resources.
+   - **From Local VS Code Desktop:** Press `F1` → *Remote-SSH: Connect to Host...* → enter `<node>`.
+5. **Releasing Resources:** When you are done working, simply return to Open OnDemand and click **Delete** on the session card. This immediately cancels the Slurm job and releases the hardware for other researchers.
 
 ## 🤖 AI Chatbot (RAG Assistant)
 
