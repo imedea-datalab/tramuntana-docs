@@ -8,6 +8,43 @@ Open OnDemand (OOD) provides a user-friendly web interface to the Tramuntana clu
 2. **Login**: Use your standard IMEDEA username and password.
 3. **Launch Apps**: In the top navigation bar, click on **Interactive Apps** and select the application you want to launch (e.g., MATLAB, VS Code, or RStudio).
 
+## 📁 Web File Explorer: Managing Files in `/home` and `/data`
+
+Open OnDemand includes a full graphical file manager directly in your web browser. You can browse, upload, download, and organize files on Tramuntana without touching the command line or using SFTP clients.
+
+### How to Access:
+1. In the top navigation bar, click on **Files** → **Home Directory**.
+2. By default, this opens your personal `/home/<username>` folder on Tramuntana.
+
+### Navigating to Other Folders (e.g., `/data`):
+While it opens in your Home directory by default, you can freely navigate anywhere on the cluster that your account has permission to read or write:
+- Click on folder names to browse deeper, or click the path breadcrumbs at the top to jump back up.
+- Click the **Change Directory** button (or click the path bar) to type a specific directory path, such as:
+  - `/data/<your_group_name>` to browse and manage shared research datasets.
+  - `/data/shared` to check shared software and environments.
+
+### What you can do directly from your browser:
+- ⬆️ **Upload:** Click the **Upload** button in the toolbar to select files, or simply **drag and drop** files from your computer directly into the browser window.
+- ⬇️ **Download:** Select any file or folder and click **Download** to save it directly to your laptop.
+- ✏️ **View & Edit:** Select any script, configuration, or `.slurm` file (e.g. `.py`, `.sh`, `.yaml`, `.txt`) and click **View** or **Edit** to edit and save it immediately in the browser without needing to launch a full VS Code instance.
+- 🗂️ **File Operations:** Use the toolbar to create **New File**, **New Directory**, or select items to **Move / Rename**, **Copy**, or **Delete**.
+- 💻 **Open in Terminal:** Need to run commands on the files you're viewing? Click **"Open in Terminal"** in the toolbar to launch a web shell session directly inside the current folder.
+
+
+## 💻 Instant Terminal Access: "Open in Terminal" (No SSH Setup Needed)
+
+If you need command-line access to Tramuntana but don't want to type physical SSH commands, configure `~/.ssh/config`, generate keys, or install SSH clients on your machine:
+1. You can click **Clusters** → **>_ Tramuntana Shell Access** in the top navigation bar
+2. Alternatively, click on **Files** → **Home Directory** (this opens your `/home/<username>` file manager).
+      - In the file explorer toolbar at the top, click the button labeled **"Open in Terminal"**.
+
+### Why this is convenient:
+- **No Physical SSH Needed:** You don't have to open a local terminal, type `ssh user@10.33.0.143`, remember IP addresses, or manage SSH keys.
+- **Zero Client Setup:** Perfect for Windows users or locked laptops where installing or configuring SSH / PuTTY is complicated. Everything runs securely over standard HTTPS directly in your browser.
+- **Starts in Your Working Directory:** The browser terminal opens directly in your `/home/<username>` directory on the `tramuntana` login node.
+- **Full CLI Power:** You have immediate access to all cluster commands (`squeue`, `sbatch`, `check_gpu`, `check_cpu_ram`, `tramuntana-profile`, etc.) just like a traditional SSH session.
+
+
 ## 🎛️ Configuring Your Session
 
 When you select an interactive app, you will be presented with a form to request cluster resources. This form essentially builds the SLURM job submission for you under the hood.
