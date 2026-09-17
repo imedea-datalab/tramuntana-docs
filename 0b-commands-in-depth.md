@@ -16,6 +16,8 @@ This guide covers advanced usage of SLURM, including deep-dives into job paramet
 | 2 | [Checking Resource Usage (GPU, CPU, RAM)](#2-checking-resource-usage-gpu-cpu-ram) |
 | 3 | [Job Arrays — Running Many Independent Jobs](#3-job-arrays--running-many-independent-jobs) |
 | 4 | [Commands & Monitoring Reference](#4-commands--monitoring-reference) |
+| 5 | [Transferring Files with `rsync` (Local ↔ Cluster)](#5-transferring-files-with-rsync-local--cluster) |
+| 6 | [SSH Setup & Passwordless Login (Linux, macOS, Windows)](#6-ssh-setup--passwordless-login-linux-macos-windows) |
 
 ---
 ## 1. Important SLURM Arguments Explained
@@ -510,4 +512,183 @@ sacct -j 12345 --format=JobID,JobName,MaxRSS,Elapsed,CPUTime,TotalCPU
 Use `seff` after every job to learn whether you're requesting too much or too little. Over-requesting wastes cluster capacity; under-requesting risks your job being killed.
 
 ---
+
+## 5. Transferring Files with `rsync` (Local ↔ Cluster)
+
+`rsync` (Remote Sync) is the recommended tool for moving code, datasets, and simulation results between your local computer and Tramuntana. Unlike basic `scp`, `rsync` only copies files that have changed (diffs), provides a live progress bar, and automatically resumes interrupted transfers if your network connection drops.
+
+### Recommended Flags: `-avzP`
+
+```bash
+rsync -avzP source/ destination/
+```
+- `-a` (**archive**): Recursively syncs files while preserving permissions, timestamps, owner info, and symlinks.
+- `-v` (**verbose**): Displays filenames as they are being transferred.
+- `-z` (**compress**): Compresses file data during transfer to speed up network throughput.
+- `-P` (**progress & partial**): Shows a live progress bar and speed, and keeps partially transferred files so interrupted transfers can resume instead of restarting from 0%.
+
+> [!IMPORTANT]
+> **The Trailing Slash Rule (`dir/` vs `dir`):**
+> - `rsync -avzP ./my_code/ user@tramuntana:~/my_code/` copies the **contents** inside `./my_code` directly into `~/my_code/`.
+> - `rsync -avzP ./my_code user@tramuntana:~/` creates the folder `my_code` inside `~/`.
+> - When in doubt, test your command first with `--dry-run` to see what would be transferred without making any changes!
+
+---
+
+### Scenario 1: Running `rsync` from your LOCAL machine (Recommended)
+
+Running `rsync` from your personal laptop or workstation terminal (connected to IMEDEA Ethernet or VPN) is the **simplest and most common workflow**, because your laptop can directly connect to the Tramuntana login node (`10.33.0.143`).
+
+#### A. Uploading to Tramuntana (Local → Cluster)
+
+- **Upload to `/home` (personal code, git repos, configs — backed up nightly):**
+  ```bash
+  # Upload a project folder
+  rsync -avzP ./my_project/ username@10.33.0.143:~/my_project/
+
+  # If you set up ~/.ssh/config alias:
+  rsync -avzP ./my_project/ tramuntana:~/my_project/
+  ```
+
+- **Upload to `/data` (large group datasets, raw inputs — NOT backed up):**
+  ```bash
+  # Upload directly to your research group directory on shared storage
+  rsync -avzP ./raw_data/ username@10.33.0.143:/data/<your_group_name>/raw_data/
+  ```
+
+#### B. Downloading from Tramuntana (Cluster → Local)
+
+- **Download results from `/home` to your laptop:**
+  ```bash
+  rsync -avzP username@10.33.0.143:~/my_project/results/ ./local_results/
+  ```
+
+- **Download large output files from `/data`:**
+  ```bash
+  rsync -avzP username@10.33.0.143:/data/<your_group_name>/model_output/ ./local_results/
+  ```
+> **💡 Easier Alternatives:**
+> - **GUI:** Use the **Open OnDemand Web File Explorer** (**Files → Home Directory**). You can upload and download files directly through your web browser with a simple button click or drag-and-drop, without touching SSH at all!
+
+---
+
+## 6. SSH Setup & Passwordless Login (Linux, macOS, Windows)
+
+Connecting to Tramuntana using `ssh username@10.33.0.143` and typing your password every time works, but it quickly becomes repetitive. By setting up an **SSH host alias** in your config file and configuring **SSH keys**, you can log in, run interactive jobs, and execute file transfers with `rsync` instantly—without typing passwords or remembering IP addresses ever again.
+
+---
+
+### Part 1: Setting Up `~/.ssh/config` (Host Alias)
+
+An SSH configuration file lets you create a friendly nickname (like `tramuntana`) for the cluster. Once configured, typing `ssh tramuntana` automatically fills in the IP address, your username, and your SSH key.
+
+#### The Configuration Block
+
+Add the following block to your local SSH configuration file:
+
+```ssh-config
+Host tramuntana
+    HostName 10.33.0.143
+    User <your_imedea_username>
+    IdentityFile ~/.ssh/id_ed25519
+```
+*(Replace `<your_imedea_username>` with your actual IMEDEA username).*
+
+#### Where is this file located?
+
+- **On Linux and macOS:**
+  The file is located at `~/.ssh/config` (inside your home directory).
+  1. Open a terminal and ensure the `.ssh` directory exists with proper permissions:
+     ```bash
+     mkdir -p ~/.ssh && chmod 700 ~/.ssh
+     ```
+  2. Open or create the config file in your preferred editor:
+     ```bash
+     nano ~/.ssh/config
+     ```
+  3. Paste the configuration block above, save, and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
+  4. Ensure strict file permissions (SSH will ignore the file if permissions are too open):
+     ```bash
+     chmod 600 ~/.ssh/config
+     ```
+
+- **On Windows (PowerShell / Windows Terminal):**
+  The file is located at `C:\Users\<YourUser>\.ssh\config`.
+  1. Open PowerShell and ensure your `.ssh` directory exists:
+     ```powershell
+     if (!(Test-Path "$HOME\.ssh")) { New-Item -ItemType Directory -Path "$HOME\.ssh" }
+     ```
+  2. Open or create the config file using Notepad:
+     ```powershell
+     notepad $HOME\.ssh\config
+     ```
+  3. Paste the configuration block above into Notepad, save (`Ctrl+S`), and close Notepad.
+     *(Note: Windows OpenSSH automatically expands `~/.ssh/id_ed25519` to your user profile folder).*
+
+---
+
+### Part 2: Passwordless Login with SSH Keys
+
+Setting up an SSH key pair allows Tramuntana to authenticate your computer cryptographically. You will never need to type your IMEDEA password when logging in or running file transfers.
+
+#### Step 1: Generate an SSH Key Pair (on your local computer)
+
+Open your local terminal (or PowerShell on Windows) and run:
+
+```bash
+ssh-keygen -t ed25519
+```
+
+- When prompted to *Enter file in which to save the key*, press **Enter** to accept the default location (`~/.ssh/id_ed25519`).
+- When prompted for a *passphrase*, you can press **Enter** twice for fully passwordless login, or enter a passphrase if you want extra protection on your local machine.
+
+This generates two files in your `~/.ssh/` directory:
+- `id_ed25519`: Your **private key** (Keep this safe on your laptop! Never share or upload it).
+- `id_ed25519.pub`: Your **public key** (This is the key that gets copied to Tramuntana).
+
+#### Step 2: Copy your Public Key to Tramuntana
+
+- **On Linux & macOS:**
+  Use the built-in `ssh-copy-id` command:
+  ```bash
+  ssh-copy-id tramuntana
+  # (Or: ssh-copy-id username@10.33.0.143)
+  ```
+  Type your IMEDEA password one last time.
+
+- **On Windows (PowerShell):**
+  Windows does not include `ssh-copy-id` out of the box, but you can copy your public key with this single PowerShell command:
+  ```powershell
+  type $HOME\.ssh\id_ed25519.pub | ssh tramuntana "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  ```
+  Type your IMEDEA password one last time when prompted.
+
+#### Test Your Connection:
+```bash
+ssh tramuntana
+```
+You should now connect directly to the Tramuntana login node without entering your password!
+
+---
+
+### How This Simplifies `rsync` File Transfers
+
+With your SSH alias and passwordless keys configured, **`rsync` transfers become effortless and completely automated**. You no longer need to type long IP addresses or stop to enter passwords:
+
+```bash
+# Upload project code to /home:
+rsync -avzP ./my_project/ tramuntana:~/my_project/
+
+# Upload large dataset to /data:
+rsync -avzP ./raw_data/ tramuntana:/data/<your_group_name>/raw_data/
+
+# Download simulation outputs back to your laptop:
+rsync -avzP tramuntana:~/my_project/results/ ./local_results/
+```
+
+> [!TIP]
+> **Understanding `rsync` in depth:**
+> For a full breakdown of how `rsync` works, the `-avzP` flags, the critical trailing slash rule (`dir/` vs `dir`), and bidirectional upload/download workflows, see [**Section 5: Transferring Files with `rsync` (Local ↔ Cluster)**](#5-transferring-files-with-rsync-local--cluster).
+
+
 
