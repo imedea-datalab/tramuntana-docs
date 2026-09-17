@@ -178,6 +178,17 @@ ssh thor    # or whatever node was assigned
 
 > ⚠️ **Warning:** If you lose your internet connection (Wi-Fi drops, laptop closes), your `salloc` session is killed instantly and your reservation is released. This is a live connection — there's no "reconnect."
 
+> [!TIP]
+> **How to keep interactive sessions alive (The `tmux` trick)**
+> If you want to run an interactive shell, start a long script, and then safely disconnect your laptop without the job dying, use `tmux` on the **login node** first:
+> 1. `tmux new -s my_session` *(Starts a persistent terminal window on the login node).*
+> 2. `srun --pty bash` *(Requests resources and jumps to the compute node inside that window).*
+> 3. `python train.py` *(Start your long-running task).*
+> 4. Press **`Ctrl+B`**, let go, then press **`D`** *(Detaches the window so you can safely disconnect your SSH).*
+> 5. `tmux attach -t my_session` *(Run this when you reconnect later to resume exactly where you left off).*
+>
+> *Note: Slurm still perfectly tracks this! You will see it running in `squeue`, and it will still respect your requested time limits.*
+
 > [!CAUTION]
 > **Strict Resource Isolation (CPU vs GPU)**
 > When you SSH into a compute node, you are securely locked into the resources you requested. If you only allocated CPUs, **you cannot see or use the GPUs** — even if the node has them. If you need a GPU during your interactive session, you *must* request it during allocation (e.g., `--gres=gpu_mem:8`).
