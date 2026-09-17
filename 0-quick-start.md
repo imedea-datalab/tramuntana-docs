@@ -493,7 +493,7 @@ To profile an array job:
 > Depending on your launcher, you should map this number to the process count:
 > - For `mpirun`/`mpiexec`: `mpirun -np $SLURM_CPUS_PER_TASK ...`
 > - For `srun`: `srun -n $SLURM_CPUS_PER_TASK --cpus-per-task=1 ...` (Notice that the actual `--cpus-per-task` argument passed directly to the `srun` command is strictly `1`).
-> 
+
 **Example implementation:**
 ```bash 
 # Determine number of MPI ranks from SLURM allocation
