@@ -144,6 +144,13 @@ Sometimes you don't want to submit a script and walk away — you want to sit at
 salloc --cpus-per-task=4 --mem=20G --time=24:00:00 --nodelist=thor --partition=gpu --gres=gpu_mem:40 
 ```
 
+> [!TIP]
+> **Prefer a graphical interface? You can also allocate resources via Open OnDemand!**  
+> Instead of typing long `salloc` commands and remembering flags, you can open [Open OnDemand](open-ondemand.md#⚡-interactive-compute-allocation-ssh--web-shell-without-heavy-apps) &rarr; **Interactive Apps** &rarr; **Interactive Compute Allocation (SSH)**:
+> - Select your CPUs, RAM, GPU, node, and wall time with simple sliders and dropdowns.
+> - **Immune to Wi-Fi drops:** The reservation runs server-side on the cluster, so closing your laptop or losing network connection will **not** kill your reservation!
+> - Gives you a one-click **"Open Web Terminal"** right inside your browser, as well as an `ssh <node>` command for your local terminal or desktop VS Code Remote-SSH.
+
 > [!NOTE]
 > **What is a "shell"?** When you open your terminal app (like Terminal on Mac, or a PuTTY window), the program running *inside* that window is called a **shell** — it's the thing that reads what you type, interprets the command, and tells the operating system what to do. Common shells are **Bash** and **Zsh**. The terminal is just the window; the shell is the brain inside it. When we say SLURM gives you a "new shell session," it means a fresh instance of that command-reading program — ready for you to type into.
 
