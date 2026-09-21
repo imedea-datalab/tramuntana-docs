@@ -222,10 +222,7 @@ Once your job is running, you can "peek" inside from the login node to check how
 To see live CPU core utilization, load, and thread activity for your job's processes:
 
 ```bash
-# Interactive CPU & process monitor (htop):
-srun --jobid=<YOUR_JOB_ID> --overlap --pty htop -u $USER
-
-# Or standard top:
+# standard top:
 srun --jobid=<YOUR_JOB_ID> --overlap --pty top -u $USER
 ```
 - **How `--overlap` works:** It tells SLURM to share the CPUs already allocated to your running job so you can launch `htop` without requesting extra resources or queuing.
@@ -315,10 +312,7 @@ You generally do **not** need `--overlap` for a basic interactive session. The m
 # Check live GPU status without stopping your job:
 srun --jobid=12345 --overlap --pty nvidia-smi
 
-# Check live CPU & process activity (htop) without stopping your job:
-srun --jobid=12345 --overlap --pty htop -u $USER
-
-# Or hop directly into an interactive shell inside your running job:
+# Hop directly into an interactive shell inside your running job:
 srun --jobid=12345 --overlap --pty bash
 ```
 
