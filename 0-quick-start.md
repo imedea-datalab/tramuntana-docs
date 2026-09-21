@@ -83,7 +83,7 @@ Think of it like dropping off your laundry. You hand it in, walk away, and come 
 #SBATCH --mail-user=your-email@uib.es # Your email address
 
 # Your actual commands go here
-python my_script.py
+/usr/bin/python3 my_script.py
 
 # --- Using uv instead? ---
 # uv run python my_script.py
@@ -124,13 +124,13 @@ sbatch my_job.slurm
 
 > [!TIP]
 > **Want to peek inside your running job to check live CPU or GPU usage?**  
-> You can monitor live CPU core utilization with `srun --jobid=<id> --overlap --pty htop -u $USER` or check GPU VRAM with `nvidia-smi`. See the full [Peeking Inside a Running Job guide in Commands In-Depth](0b-commands-in-depth.md#step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu).
+> You can monitor live CPU core utilization with `srun --jobid=<id> --overlap --pty top -u $USER` or check GPU VRAM with `nvidia-smi`. See the full [Peeking Inside a Running Job guide in Commands In-Depth](0b-commands-in-depth.md#step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu).
 
 >[!TIP]
 > **Please read these documents**
-> Once you have submitted job and it is running, it is good idea to read these documents to understand how can you see infromation about your job -
-> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md). 
-> - Especially [**Commands & Monitoring Reference**](#4-commands--monitoring-reference).
+> Once you have submitted a job and it is running, it is a good idea to read these documents to understand how to view information about your job:
+> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) 
+> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#4-commands--monitoring-reference)
 
 ---
 
@@ -159,12 +159,12 @@ Your terminal will pause while SLURM looks for available resources. Once granted
 > [!CAUTION]
 > **⚠️ Do NOT run heavy computations or Python/GPU scripts in this shell directly!**
 > The `salloc` command starts a subshell located physically on **the login node (`tramuntana`)**, NOT on the compute node.
-> - If you execute `python my_script.py` directly in this shell, it runs on the login node's CPU, consuming shared head-node resources and failing to access any GPU hardware.
+> - If you execute `python3 my_script.py` directly in this shell, it runs on the login node's CPU, consuming shared head-node resources and failing to access any GPU hardware.
 > - **How to actually run your code on the allocated node:**
 >   1. **Use `srun` (Recommended):** Run one-off commands or open an interactive compute shell directly:
 >      ```bash
 >      srun --pty bash          # Opens a shell on the allocated compute node
->      srun python my_script.py # Runs the script directly on the compute node
+>      srun python3 my_script.py # Runs the script directly on the compute node
 >      ```
 >   2. **Or SSH to the allocated node:** Check the assigned node and SSH into it:
 >      ```bash
@@ -211,9 +211,9 @@ ssh thor    # or whatever node was assigned
 
 >[!TIP]
 > **Please read these documents**
-> Once you have submitted job and it is running, it is good idea to read these documents to understand how can you see infromation about your job -
-> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md). 
-> - Especially [**Commands & Monitoring Reference**](#4-commands--monitoring-reference).
+> Once you have submitted a job and it is running, it is a good idea to read these documents to understand how to view information about your job:
+> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) 
+> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#4-commands--monitoring-reference)
 
 ---
 
@@ -303,9 +303,9 @@ Because of this, you can use `srun` multiple times within a single `.slurm` file
 
 >[!TIP]
 > **Please read these documents**
-> Once you have submitted job and it is running, it is good idea to read these documents to understand how can you see infromation about your job -
-> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md). 
-> - Especially [**Commands & Monitoring Reference**](#4-commands--monitoring-reference).
+> Once you have submitted a job and it is running, it is a good idea to read these documents to understand how to view information about your job:
+> - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) 
+> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#4-commands--monitoring-reference)
 
 ---
 
@@ -418,7 +418,7 @@ To help users find the optimal `#SBATCH` resource limits for their jobs without 
 >   2. Check `squeue -u $USER` to confirm it moves from `PENDING` to `RUNNING`.
 >   3. Watch initial logs: `tail -f output_<jobid>.txt` to verify it passes startup initialization without crashing.
 >   4. Peek inside to verify it is actually doing computation and using the allocated CPUs or GPUs (see [Peeking Inside a Running Job in Commands In-Depth](0b-commands-in-depth.md#step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu)):
->      - **CPU jobs:** `srun --jobid=<jobid> --overlap --pty htop -u $USER`
+>      - **CPU jobs:** `srun --jobid=<jobid> --overlap --pty top -u $USER`
 >      - **GPU jobs:** `srun --jobid=<jobid> --overlap --pty nvidia-smi`
 >   5. Once you confirm it is running cleanly and utilizing resources, stop it with `scancel <jobid>`.
 > - **Now run the profiler:** Once verified, submit it to `tramuntana-profile` (use `--sample-time` / `-t` if it is a long job).
@@ -575,7 +575,7 @@ Use this to make sure you haven't missed a step, from first connection to finish
 - [ ] Submit: `sbatch my_job.slurm` — note the job ID
 - [ ] Check status: `squeue -u $USER`
 - [ ] Watch output live: `tail -f output_<jobid>.txt`
-- [ ] For CPU jobs, peek at core usage: `srun --jobid=<id> --overlap --pty htop -u $USER`
+- [ ] For CPU jobs, peek at core usage: `srun --jobid=<id> --overlap --pty top -u $USER`
 - [ ] For GPU jobs, peek at VRAM/GPU: `srun --jobid=<id> --overlap --pty nvidia-smi`
 - [ ] Or open a shell inside the running job: `srun --jobid=<id> --overlap --pty bash`
 
