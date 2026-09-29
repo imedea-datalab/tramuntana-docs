@@ -214,21 +214,48 @@ squeue -u $USER
 ```
 This shows your jobs and which nodes they're on.
 
-### Step 3: Peek inside a running job (Monitoring Live CPU & GPU)
+### Step 3: Peek inside a running job (Monitoring Live CPU, Memory & GPU)
+<a id="step-3-peek-inside-a-running-job-monitoring-live-cpu--gpu"></a>
 
-Once your job is running, you can "peek" inside from the login node to check how many of your allocated resources (CPUs or GPUs) your code is actually utilizing:
+Once your job is running, you can "peek" inside from the login node to check how many of your allocated resources (CPUs, RAM, or GPUs) your code is actually utilizing:
 
-#### A. Live CPU Utilization (`htop` or `top`)
+- **CPU & RAM jobs:** `srun --jobid=<YOUR_JOB_ID> --overlap --pty top -u $USER`
+- **GPU & VRAM jobs:** `srun --jobid=<YOUR_JOB_ID> --overlap --pty nvidia-smi`
+- **Interactive shell inside job:** `srun --jobid=<YOUR_JOB_ID> --overlap --pty bash`
+
+---
+
+#### A. Live CPU Utilization (`top`)
 To see live CPU core utilization, load, and thread activity for your job's processes:
 
 ```bash
-# standard top:
 srun --jobid=<YOUR_JOB_ID> --overlap --pty top -u $USER
 ```
-- **How `--overlap` works:** It tells SLURM to share the CPUs already allocated to your running job so you can launch `htop` without requesting extra resources or queuing.
-- **Reading the numbers:** In `htop`, the top bars show CPU activity. If your code is multi-threaded and using 4 cores at 100%, `htop` will show `400% CPU` for your process. Press `q` to exit `htop` anytime without interrupting your job.
+- **How `--overlap` works:** It tells SLURM to share the CPUs already allocated to your running job so you can launch `top` without requesting extra resources or queuing.
+- **Reading the CPU numbers (`%CPU`):** In `top`, **100% = 1 full CPU core**. If your code is multi-threaded and using 4 cores at 100%, `top` will show `400% CPU` for your process (or separate lines showing ~`100% CPU` if using parallel worker processes). Press `q` to exit `top` anytime without interrupting your job.
 
-#### B. Live GPU Utilization (`nvidia-smi`)
+#### B. Live Memory (RAM) Monitoring (`top` & `sstat`)
+When checking how much RAM your code is consuming inside `top`, keep these key rules in mind:
+
+1. **Do NOT rely on `%MEM` to determine your job's memory limit!**
+   - Standard `top` calculates `%MEM` against the **entire physical node's RAM** (e.g., 1.5 TB on `thor`, 768 GB on `ada`), **NOT** against the memory you requested with `#SBATCH --mem`.
+   - On a large node like `thor` (1.5 TB RAM), a process using 1.5 GB will display as only `0.1%`!
+2. **Look at the `RES` (Resident Set Size) column instead:**
+   - The **`RES`** column shows the **actual physical RAM** currently occupied by each process.
+   - **`g` suffix** (e.g., `1,2g`): Process is using **~1.2 GB** of physical RAM.
+   - **`m` suffix** (e.g., `983m`): Process is using **~983 MB** of physical RAM.
+   - **Plain numbers without a suffix** (e.g., `937324`): Standard Linux `top` displays these in **Kilobytes (KiB)**. Divide by $1,024$ to get MB ($\approx 915\text{ MB}$), or by $\approx 1{,}000{,}000$ to get GB ($\approx 0.9\text{ GB}$).
+   - **Pro-tip:** While in `top`, press the lowercase letter **`e`** to cycle memory display units (KiB $\to$ MiB $\to$ GiB) so every process shows up cleanly in Megabytes or Gigabytes.
+3. **Remember: `top` lists memory PER PROCESS, not total job memory:**
+   - If your job runs parallel tasks (e.g., in R via `mclapply`/`future` or Python `multiprocessing`), each row is one worker process.
+   - If you have 30 workers each showing `1.2g` in `RES`, your job is actually using $30 \times 1.2\text{ GB} = \mathbf{36\text{ GB}}$ of RAM in total! Make sure your `#SBATCH --mem` request covers the sum of all workers plus a safety buffer.
+4. **Checking total job RAM across all processes (`sstat`):**
+   To see real-time peak and average memory across all processes in your running job without calculating manually:
+   ```bash
+   sstat -j <YOUR_JOB_ID>.batch --format=JobID,MaxRSS,AveRSS
+   ```
+
+#### C. Live GPU Utilization (`nvidia-smi`)
 To see live GPU status and VRAM consumption on the node where your job is running:
 
 ```bash
@@ -426,8 +453,11 @@ Because SLURM applies resource directives (`--cpus-per-task`, `--mem`, `--gres=g
 | `seff <job_id>` | See how efficiently a **completed** job used its resources (CPU %, memory used vs requested). |
 | `sacct -u $USER` | View your job history (past completed/failed jobs). |
 | `scontrol show job <job_id>` | Get all the details about a specific job (node, resources, start time, etc.). |
+| `srun --jobid=<id> --overlap --pty top -u $USER` | Peek at live CPU and memory (RAM) usage inside your running job. |
 | `srun --jobid=<id> --overlap --pty nvidia-smi` | Peek at live GPU usage inside a running job. |
+| `srun --jobid=<id> --overlap --pty bash` | Open an interactive terminal directly inside your running job allocation. |
 | `srun --gres=gpu_mem:1 --time=00:02:00 --partition=gpu --immediate=3 --pty watch -n 1 nvidia-smi` | Quick GPU eavesdrop — live stats with minimal resources. |
+| `sstat -j <id>.batch --format=JobID,MaxRSS,AveRSS` | Query real-time memory usage (Max/Ave RSS) across all processes in a running job. |
 
 ---
 
