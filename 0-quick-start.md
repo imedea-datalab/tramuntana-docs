@@ -183,6 +183,18 @@ Then SSH into that node:
 ssh thor    # or whatever node was assigned
 ```
 
+> [!IMPORTANT]
+> **Getting prompted for a password when running `ssh <node>`?**  
+> Compute nodes do not accept interactive password logins. If typing `ssh thor` (or `ssh ada`, `ssh pampero`) prompts you for a password and fails:
+> 1. **Option A (Easiest — No SSH setup needed):** Use `srun --pty bash` instead of `ssh`. It bypasses SSH completely, doesn't ask for any keys or passwords, and opens a shell directly inside your allocated job.
+> 2. **Option B (If you need SSH):** Ensure you have an internal SSH keypair set up in your cluster home directory:
+>    ```bash
+>    ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
+>    cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+>    chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+>    ```
+>    Because your `/home` directory is shared across all nodes via NFS, this will immediately enable passwordless SSH access to all assigned compute nodes.
+
 > ⚠️ **Warning:** If you lose your internet connection (Wi-Fi drops, laptop closes), your `salloc` session is killed instantly and your reservation is released. This is a live connection — there's no "reconnect."
 
 > [!TIP]
