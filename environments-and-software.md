@@ -136,6 +136,89 @@ uv run python my_script.py
 ```
 `uv` is smart enough to say: *"Oh, they want to run this script. Let me briefly jump into their sandbox, run the code, and then jump back out."* It's clean, safe, and prevents you from accidentally leaving an environment activated!
 
+#### Step 4: Running the Same Environment from Another Folder
+Normally, you run `uv` commands while inside your project folder. However, on the cluster, you might store your project code in your home directory (`/home/username/my_project`) while running jobs or accessing datasets located in a data directory (`/data/YourGroup/...`), or from an ad-hoc directory.
+
+If you need to execute code from a different folder while targeting your project's environment, you have three options:
+
+##### Option A: Direct Path (Interpreter Direct Execution)
+You can directly call the Python interpreter living inside your project's `.venv`:
+*   **Linux / macOS (Cluster)**:
+    ```bash
+    /path/to/project/.venv/bin/python script.py
+    ```
+*   **Windows (Local PC)**:
+    ```bash
+    C:\path\to\project\.venv\Scripts\python.exe script.py
+    ```
+*   **Why use it**: Ideal inside SLURM batch job scripts when you want a straightforward, direct path to the exact Python binary without invoking `uv`.
+
+##### Option B: Using the `--project` Flag (⭐️ Recommended)
+Tell `uv` which project directory to target using `--project`:
+```bash
+uv run --project /path/to/project python script.py
+```
+*   **Why use it**: `uv` automatically locates the project's `.venv`, validates that dependencies and locks are up to date, and runs your script seamlessly regardless of your current working directory.
+
+##### Option C: Environment Variable (`VIRTUAL_ENV`)
+Set the `VIRTUAL_ENV` variable to point to your project's `.venv`:
+```bash
+VIRTUAL_ENV=/path/to/project/.venv uv run python script.py
+```
+Or export it in your shell session or SLURM script:
+```bash
+export VIRTUAL_ENV=/path/to/project/.venv
+uv run python script.py
+```
+*   **Why use it**: Convenient if you are running multiple commands in a row from another folder and don't want to append `--project` every time.
+
+#### Step 5: Working with `requirements.txt` (Migration & Sharing)
+If you are migrating an older project (such as from Conda or a standard `pip` workflow) or need to share dependencies with collaborators and deployment systems that require standard files:
+
+##### 1. Getting `requirements.txt` from an Existing Conda Environment
+If you are currently using a Conda environment and want to migrate to `uv`, export its packages using `pip`:
+
+```bash
+# 1. Activate your Conda environment
+conda activate my_conda_env
+
+# 2. Export installed packages in pip-compatible format
+pip list --format=freeze > requirements.txt
+# (or: pip freeze > requirements.txt)
+```
+
+> [!TIP]
+> **Why export with `pip` instead of `conda list --export`?**
+> Conda's native export (`conda list --export`) includes Conda-specific build strings (e.g. `numpy=1.26.0=py311h...`) that standard Python tools cannot parse. Using `pip list --format=freeze` or `pip freeze` ensures the package names and versions follow standard PyPI format, making them 100% compatible with `uv`.
+
+##### 2. Importing into Your Project (Permanent)
+To import packages from `requirements.txt` into your `uv` project permanently:
+```bash
+uv add -r requirements.txt
+```
+*   **Reads all packages** from `requirements.txt`.
+*   **Formally declares them** in your `pyproject.toml` and updates `uv.lock`.
+*   **Installs them** directly into `.venv/`.
+
+##### 3. One-Time Install (Without Altering `pyproject.toml`)
+If you just want to install packages directly into `.venv` without modifying `pyproject.toml` or `uv.lock`:
+```bash
+uv pip install -r requirements.txt
+```
+*   Installs packages directly into `.venv/`, serving as a lightning-fast drop-in replacement for classic `pip install -r requirements.txt`.
+*   Useful for quick testing, one-off scripts, or legacy instructions.
+
+##### 4. Exporting Back to `requirements.txt`
+If you need to share your environment with someone not using `uv`, or for deployment (like Docker containers or legacy CI/CD pipelines):
+```bash
+uv export --format requirements-txt -o requirements.txt
+```
+*   Generates a frozen, locked `requirements.txt` from your `uv.lock` file, guaranteeing exact reproducible versions.
+*   **Pro Tip**: If you want a clean requirements file without package hashes, add `--no-hashes`:
+    ```bash
+    uv export --format requirements-txt --no-hashes -o requirements.txt
+    ```
+
 ---
 
 ### Part 2: Using Conda (Legacy / Alternative)
