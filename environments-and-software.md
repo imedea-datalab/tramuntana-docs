@@ -12,6 +12,7 @@ This guide covers everything you need to know about setting up software environm
 
 1. [Setting Up Environments](#setting-up-environments)
 2. [Using R for Statistical Computing](#using-r-for-statistical-computing)
+3. [Using MATLAB on the Cluster](#using-matlab-on-the-cluster)
 
 ---
 
@@ -538,5 +539,184 @@ gc()  # Force garbage collection
 For detailed instructions and troubleshooting, see the separate RStudio Server user guide.
 
 ---
+
+## Using MATLAB on the Cluster
+
+### Overview & Container Architecture
+
+On Tramuntana, MATLAB is deployed using standardized, high-performance **Apptainer containers** (as covered in our container and sandbox documentation). The container encapsulates the full operating system libraries, MATLAB binaries, and toolboxes into an isolated read-only image (`.sif`).
+
+To provide a seamless experience, we provide native command wrappers (such as `matlab2025b`). You do not need to learn complex Apptainer syntax or manage bind mounts—running `matlab2025b` behaves just like a local bare-metal command while automatically routing through the optimized cluster container.
+
+> [!WARNING]
+> #### ⚠️ Do Not Build Your Own MATLAB Container Image!
+> Even though Apptainer allows building custom containers with `--fakeroot`, **we strongly discourage users from creating their own MATLAB containers**.
+>
+> 1. **Massive Storage Footprint:** A complete MATLAB container image is **15–20+ GB**. If individual researchers maintain their own images, the shared cluster storage will rapidly deplete.
+> 2. **Complex Network Licensing:** MATLAB requires institutional FlexLM license server tokens. Misconfigured containers lead to license checkout errors.
+>
+> **What should you do instead?**
+> If you need a new MATLAB release, a missing toolbox, or specialized configuration, **simply contact the cluster administrators**. We maintain centralized, optimized images under our Campus-Wide license that are instantly accessible to everyone on all compute nodes.
+
+---
+
+### Available Versions & How to Launch MATLAB
+
+You can access MATLAB using the version-specific commands available in your `$PATH`:
+
+* **`matlab2025b` (Recommended):** The latest cluster-wide release. It comes pre-installed with all standard and widely used MathWorks toolboxes (Parallel Computing, Statistics and Machine Learning, Optimization, Signal Processing, Image Processing, Deep Learning, etc.).
+* **`matlab2020b` (Legacy):** An older release maintained for backward compatibility. While it may not contain all modern toolboxes, administrators can easily add any required packages upon request.
+
+You can run MATLAB in three ways: via the web browser, through an interactive graphical session, or directly from the command line / SLURM.
+
+---
+
+#### 1. Web Portal via Open OnDemand (Interactive Apps)
+The easiest way to work with MATLAB interactively is through the **Open OnDemand** web portal:
+1. Open the Open OnDemand portal in your web browser.
+2. Navigate to **Interactive Apps** $\rightarrow$ **MATLAB**.
+3. Select your desired MATLAB version (e.g., `MATLAB R2025b (Container)`), choose your required CPU cores, memory, and walltime, and launch the session.
+4. Once the session is ready, click **Launch MATLAB** to access a complete desktop interface right in your browser.
+
+---
+
+#### 2. Command Line Interface (CLI) & Batch Runs
+
+When connecting via SSH, you have several options depending on whether you need a graphical interface, an interactive terminal, or a non-interactive batch run:
+
+##### A. Interactive CLI in Your Terminal (No GUI)
+To launch MATLAB directly inside your current SSH terminal without popping up graphical windows, use `-nodesktop` and `-nosplash`:
+```bash
+matlab2025b -nodesktop -nosplash
+```
+This immediately brings up the `>> ` MATLAB command prompt inside your shell. To exit, simply type `exit`.
+
+##### B. Non-Interactive Batch Script Execution
+To execute a MATLAB script or function non-interactively (ideal for terminal scripts and automated pipelines):
+```bash
+matlab2025b -batch "my_analysis_script"
+```
+
+---
+
+#### 3. SLURM Batch Job Script Example
+
+Here is a ready-to-use SLURM template for submitting MATLAB batch simulations to the cluster:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=matlab-sim
+#SBATCH --output=matlab-output-%j.txt
+#SBATCH --error=matlab-error-%j.err
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=04:00:00
+#SBATCH --partition=cpu
+
+echo "Starting MATLAB job on $(hostname)..."
+
+# Run MATLAB script non-interactively
+matlab2025b -batch "run_simulation"
+
+echo "MATLAB job finished successfully!"
+```
+
+---
+
+### Installing Packages & Toolboxes: Free vs. Paid Products
+
+Because MATLAB runs inside a container, the container's root filesystem is mounted **strictly read-only (`ro`)**. You cannot write directly to `/opt/matlab/`.
+
+Package and toolbox management falls into two distinct categories:
+
+| Category | Examples | Can Users Install It? | How to Obtain It |
+| :--- | :--- | :--- | :--- |
+| **Official MathWorks Paid Products** | *Bioinformatics*, *Simulink*, *Deep Learning*, *Optimization* | ❌ No (Read-only container & license seats) | **Contact the Admins.** Under our Campus-Wide License, administrators will add official toolboxes centrally to the container. |
+| **Free / Community Add-Ons & Libraries** | *JSONLab*, *export_fig*, GitHub repos, File Exchange tools | ✅ Yes (Installed into personal user space) | **Self-service via GUI (Add-On Explorer) or CLI.** Files persist in your home directory (`~/MATLAB/`). |
+
+---
+
+### Installing Free / Community Packages
+
+You can install free community toolboxes and MATLAB File Exchange add-ons using either the **GUI** (recommended and easiest) or the **CLI**.
+
+---
+
+#### Method 1: Via the MATLAB GUI (Add-On Explorer) — ⭐️ Recommended
+
+This is the easiest and most reliable method to discover and install community packages:
+
+1. **Launch MATLAB with GUI:** Start MATLAB via Open OnDemand or with X11 forwarding (`matlab2025b`).
+2. **Open Add-On Explorer:** On the top MATLAB Toolstrip, go to the **Home** tab $\rightarrow$ click **Add-Ons** $\rightarrow$ **Get Add-Ons**.
+3. **Search for Your Package:** Use the search bar to locate your desired toolbox (for example, search for `JSONLab` or `export_fig`).
+4. **Install:** Click the package card and choose **Add** / **Install**/ **Download and Add to Path**.
+5. **MathWorks Account / Email Prompt:**
+   > [!NOTE]
+   > When you click download, MATLAB prompts you to log in with a MathWorks account email.
+   > - **Any valid MathWorks account works!** You can use your university email or any personal email (such as `@gmail.com`).
+   > - The email does **NOT** need to be tied to a cluster license server. MathWorks only requires this login to prevent automated web scraping from the File Exchange.
+6. **Where Files Are Saved & Isolation:**
+   - Your login session token is stored in `~/.matlab/`.
+   - The downloaded package files are saved into your personal directory:
+     ```text
+     /home/<username>/MATLAB/Add-Ons/
+     ```
+   - **Complete User Isolation:** Because packages reside inside `/home/<username>/`, your installations are private, never conflict with other users, and persist across all cluster compute nodes and future sessions.
+
+To verify your installed add-ons from the MATLAB command prompt:
+```matlab
+matlab.addons.installedAddons
+which loadjson
+```
+
+---
+
+#### Method 2: Via Command Line (CLI) & Git / Zip Downloads
+
+If you are working strictly from the terminal or need to install a library hosted on GitHub or an external website, you can download and extract it into your personal directory.
+
+##### Step 1: Download & Extract into Your Personal Toolbox Folder
+We recommend placing manual toolboxes inside `~/MATLAB/Toolboxes/`:
+
+```matlab
+% 1. Create a personal toolboxes folder in your home directory
+target_dir = fullfile(getenv('HOME'), 'MATLAB', 'Toolboxes');
+if ~exist(target_dir, 'dir'), mkdir(target_dir); end
+
+% 2. Download the library zip (example: export_fig from GitHub)
+zip_file = fullfile(target_dir, 'export_fig.zip');
+websave(zip_file, 'https://github.com/altmany/export_fig/archive/refs/heads/master.zip');
+
+% 3. Extract the contents
+unzip(zip_file, target_dir);
+
+% 4. Clean up the zip file
+delete(zip_file);
+```
+
+##### Step 2: Automatic Path Persistence (No Setup Required!)
+In standard desktop MATLAB, you might typically need to fiddle with `addpath()` and `savepath(fullfile(userpath, 'pathdef.m'))`. However, `pathdef.m` can easily be overlooked if you launch MATLAB from different project directories.
+
+**On Tramuntana, you don't need to worry about path configuration:**
+* The cluster's `matlab2025b` environment is automatically pre-configured in the background via `MATLABPATH`.
+* Upon launch, MATLAB automatically detects and adds `~/MATLAB/Toolboxes/` (including all subfolders) to your search path.
+* If you maintain a custom `startup.m` inside `~/Documents/MATLAB/`, it is automatically executed as well.
+
+##### Step 3: Verify Path Resolution
+Exit MATLAB and start a fresh session from any directory:
+```bash
+matlab2025b -nodesktop -nosplash
+```
+Check that MATLAB resolves the tool immediately:
+```matlab
+which export_fig
+```
+**Expected Output:**
+```text
+/home/<username>/MATLAB/Toolboxes/export_fig-master/export_fig.m
+```
+
+The toolbox is now permanently available across all interactive sessions and SLURM jobs!
 
 
