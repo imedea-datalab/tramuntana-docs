@@ -25,62 +25,112 @@ This command displays an updated status report of your group's **Used Space**, *
 * **Soft Limit (typically 15 TB):** An initial threshold that triggers a warning when crossed.
 * **Hard Limit (typically 20 TB):** The absolute maximum storage capacity you cannot exceed.
 * **The Grace Period (7 Days):** When your group's storage exceeds the Soft Limit (for example, reaching 16.5 TB), a 7-day countdown timer begins. In our HPC cluster, **when usage remains above the soft limit for longer than the 7-day grace period, the filesystem automatically locks the directory to prevent further writes**, even if you haven't hit the absolute hard limit yet!
+* **Quota Extensions on Demand:** Both `/data` and `/home` quotas are **not permanent ceilings**—they can be increased upon request. If your research group or project needs additional capacity, simply contact the cluster administrators and your limit will be expanded.
+
 To regain write access once locked, you must either delete or archive enough files to drop back below the soft limit, or contact the system administrator to request a quota extension.
 
-But these folders (`/data` and `/home`) aren't really on the login node. They actually live on **completely different nodes** — the storage nodes we met in [Part 1](1-under-the-hood.md):
+But these folders (`/data` and `/home`) aren't really on the login node or compute nodes. They actually live on **completely different nodes** — the storage servers we met in [Part 1](1-under-the-hood.md):
+* `/home` lives on **`migjorn`** (connected via an ultra-fast 50 GbE network).
+* `/data` lives on **`tramuntana-nas`** (connected via a 10 GbE network).
 
-But when you open the `/home` folder on your login node, you are actually looking directly at the hard drives over on the storage nodes. In real time the files are transferred to you over a cable and you read or see them. And each time you want to see them the data has to be fetched again ( if it is not in the memory or RAM ). So its not file sync its data streaming.
+When you open `/data` or `/home` on your compute node, you are looking directly at drives on those remote servers across physical network cables. Data is streamed in real time.
 
+---
+
+## 2. The Cable Problem & The Network Traffic Jam
+
+Now you know that your files live on storage servers, but your computations happen on compute nodes (like `ada` or `thor`). 
+
+This brings us to a crucial point: **Every time a compute node reads or writes a file in `/home` or `/data`, that data has to physically travel through a network cable.**
+
+Think of the network cable as a **highway**:
+* If your program reads a file once, does heavy math for an hour, and writes one small result file, this is totally fine—it puts just a couple of cars on the highway.
+* But what if your program reads dozens of huge files and writes a massive combined file (e.g. running `cdo mergetime` across 50 multi-GB NetCDF files), or writes thousands of files constantly? 
+
+This is called an **I/O heavy task** (Input/Output heavy). When an I/O-heavy program runs directly over `/data`, it acts like hundreds of semi-trucks flooding the highway at once. 
+
+**The result? A complete traffic jam:**
+1. **Your job slows down significantly**, because the network queue is flooded.
+2. **The entire compute node freezes for all other users**: When another researcher runs `ls`, `cd`, uses tab-autocomplete, or tries to log in, their command gets stuck waiting in the traffic jam (entering uninterruptible sleep, or "D state").
 
 ---
 
-## 2. The Cable Problem
+## 3. Storage Performance: How the Options Compare
 
-Now you know that your files live on storage nodes, but your computations happen on compute nodes (like `ada` or `thor`). 
+We ran empirical benchmarks on `ada` to measure the real write throughput of each option:
 
-This brings us to a crucial point: **Every time a compute node needs to read or write a file in `/home` or `/data`, that data has to physically travel through a cable.**
-
-Imagine you submit a job to run on `ada`. Your data is sitting in `/home` (which is physically on `migjorn`). Every single time the CPU on `ada` needs a piece of that data, it has to ask `migjorn` for it, the data travels through the cable, arrives at `ada`, gets processed, and if the result needs to be saved, it travels all the way back through the cable to `migjorn`.
-
-If your program reads a file once, does math for an hour, and writes one result file, this is totally fine. But what if your program reads and writes thousands of tiny files every second? 
-
-This is called an **I/O heavy task** (Input/Output heavy. Here reading is input and writing is output). If you do this over the network cable, your job will be incredibly slow, because traveling through the cable takes time. It can also slow down the network for everyone else on the cluster!
+| Storage Location | Physical Location | Measured Write Speed | Time to Write 100 GB | Key Consideration |
+| :--- | :--- | :--- | :--- | :--- |
+| **`/data`** | Remote (`tramuntana-nas`) | **~100 – 150 MB/s (0.1 GB/s)** *(0 MB/s during jams)* | **~12 – 16 minutes** | Huge space (200 TB pool), but slowest. Heavy I/O causes cluster-wide freezes. |
+| **`/home`** | Remote (`migjorn`) | **~600 MB/s (0.6 GB/s)** | **~2 minutes 45 seconds** | **6x faster** than `/data` (uses 50 GbE & NVMe). Great for scripts and medium datasets. *(200 GB quota, expandable on demand)*. |
+| **Local Scratch (`/scratch`)** | Physically inside compute node | **~1,000 MB/s (1.0 GB/s)** | **~1 minute 40 seconds** | **10x faster** than `/data`! Zero network traffic. Temporary only—**must be cleaned up after jobs**. |
 
 ---
-## 3. Where Should I Put My Data?
 
-Because of how this all works, there are two main ways to handle data when you run jobs, depending on what your job does:
+## 4. Where Should I Put My Data? (The Decision Guide)
 
-### The "Universal Boss" Strategy (For Normal Jobs)
-This is the default setup we just described. There is a Single Source of Truth (the storage nodes). It is made sure that the storage node overrides the `/data` and `/home` paths on every single compute node. 
+To keep your computations fast and the cluster smooth for everyone, follow this decision tree:
 
-The beauty of this is that you can write a script on the login node, send it to `ada`, and send it to `thor`, and you **never have to change the file paths**. `/data/my-project` looks exactly the same on every single machine because they are all looking through the portal at the same Boss machine. 
+### Option A: Light Reading or Small Outputs $\rightarrow$ Use `/data`
+* **When to use:** Your job reads files a few times and produces modest output files.
+* **Why:** You don't need to copy files back and forth; the shared network path handles normal, non-intensive reads smoothly.
 
-Files are streamed in real-time from the Boss machine when requested. This ensures the entire cluster is looking at the exact same set of files.
+### Option B: Medium Datasets with Frequent I/O $\rightarrow$ Use `/home`
+* **When to use:** Your code writes checkpoints, reads/writes repeatedly, and fits within your quota.
+* **Why:** `/home` writes at **600 MB/s** (6x faster than `/data`).
+* **Note:** If your project needs more than the default 200 GB, contact the administrators for an on-demand quota extension.
 
-### The "Local Storage" Strategy (🚧 Work in Progress)
-If your job is reading and writing gigabytes of data constantly (I/O heavy), streaming it over the cable, the cable is a bad idea. 
+### Option C: Heavy Merging, Big I/O, or 10+ Files $\rightarrow$ Use Local Scratch (`/scratch`)
+* **When to use:** Heavy operations like `cdo mergetime`, unpacking large archives, training loops writing frequent raw shards, or processing datasets over 10 GB.
+* **Why:** `ada` has **7 TB of ultra-fast local NVMe storage** (`/scratch`). It writes at **1.0 GB/s**, sits directly on the internal hardware bus, and uses **0% network bandwidth**—preventing any cluster freezes.
 
-Instead, it makes much more sense to keep that data physically on the **same computational node** where your job is running. Remember in Part 1 how `ada` has 7TB of NVMe scratch storage and `pampero` has 40TB of local storage? That's what it's for! 
+---
 
-**However, please note that this local storage strategy is not completely implemented right now, so please do not try to use it just yet.** 
+## 5. Working with Local Scratch: Best Practices & Cleanup
 
-Here is how it will work in the near future:
-We are planning to take the data folders from these compute nodes and "mount" them directly onto the login node itself. This means you won't need to actually SSH into the compute nodes to put your data there; you'll be able to transfer your data straight from the login node!
+Because compute node local scratch drives (`/scratch`) are shared temporary workspaces with no automated quotas, **you must clean up after your job completes**.
 
-We will also partition the compute node's local storage into two parts:
-1. **User Data:** One part for you to safely save your data for your tasks.
-2. **Internal Buffer:** Another part for the internal buffer of the compute node itself. (Don't worry about what an internal buffer is—it's complicated plumbing and you don't need to know about it!)
+### The Golden Rule of Local Scratch:
+> ⚠️ **Always delete your temporary files from `/scratch` once your results are copied back to `/data` or `/home`.** Leaving massive files in `/scratch` will eventually fill the drive and cause other jobs on that node to fail with `No space left on device`.
 
-So, for now, just know that trying to use this local storage method won't work while we are still implementing it. Stick to the "Universal Boss" strategy!
+### Recommended Slurm Batch Template:
+Here is how to structure an I/O-heavy job (like a large `cdo` merge) safely:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=fast_merge
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+
+# 1. Create a unique temporary directory on the fast local NVMe drive
+SCRATCH_DIR=/scratch/$USER/job_${SLURM_JOB_ID}
+mkdir -p "$SCRATCH_DIR"
+
+# 2. Run your heavy processing with output going to the LOCAL drive
+# (Example: merging files from /data and saving output locally at 1.0 GB/s)
+cdo -O mergetime /data/opendata/CMIP6/.../*.nc "$SCRATCH_DIR/merged_output.nc"
+
+# 3. Transfer ONLY the final result file back to shared storage
+cp "$SCRATCH_DIR/merged_output.nc" /data/my-group/results/
+
+# 4. MANDATORY CLEANUP: Remove the temporary scratch folder
+rm -rf "$SCRATCH_DIR"
+```
+
+By following this pattern:
+1. Your merge finishes **10 times faster**.
+2. Network traffic is kept to near zero.
+3. The local scratch drive remains clean and available for everyone.
 
 ---
 
 ## Recap: What You've Learned
 
-1. **Your files aren't on the login node.** `/home` and `/data` actually live on massive storage servers (`migjorn` and `tramuntana-nas`).
-2. **The Data Cable Problem:** Accessing shared storage from a compute node means data has to travel over a cable. 
-3. **Universal Boss vs Local Storage:** For most jobs, reading from the shared storage (the Boss) is perfect. For I/O heavy jobs, it's better to copy the data to the compute node's local hard drive first so it doesn't have to travel through the cables constantly.
+1. **Your files aren't on the compute node by default.** `/home` and `/data` live on dedicated storage servers (`migjorn` and `tramuntana-nas`).
+2. **The Cable Problem:** Streaming heavy read/write tasks over `/data` jams the network and freezes interactive access on the compute node.
+3. **Speed Hierarchy:** Local `/scratch` (~1.0 GB/s) > `/home` (~0.6 GB/s) > `/data` (~0.1 GB/s).
+4. **Quotas on Demand:** Both `/data` and `/home` quotas can be extended whenever your research requires it.
+5. **Clean Up Scratch:** Always remove your temporary `/scratch` folders after copying the final results back to shared storage.
 
 ---
 
