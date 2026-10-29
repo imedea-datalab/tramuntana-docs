@@ -313,35 +313,90 @@ conda activate /data/your-username/conda-envs/myproject
 
 ## Using R for Statistical Computing
 
-### What is R?
+### Overview & Container Architecture
 
-R is a programming language and environment for statistical computing and graphics. It's widely used for data analysis, statistical modeling, and visualization.
+On Tramuntana, R is deployed using standardized, high-performance **Apptainer containers** (just like MATLAB). The container encapsulates the R runtime, standard libraries, and compiled C/Fortran math backends into an isolated, read-only image (`.sif`) stored on the shared cluster filesystem.
 
-### R Installation on Tramuntana
+To provide a seamless native experience, we provide transparent command wrappers (such as `R-4.6`, and `Rscript-4.6`). You do not need to learn complex Apptainer commands or configure directory bind mounts—running these commands works like a standard Linux installation while automatically routing through the unified cluster container.
 
-R 4.4.2 is installed system-wide and available on all compute nodes:
+> [!WARNING]
+> #### ⚠️ Do Not Build Your Own Standalone R Container Images
+> While Apptainer allows building custom containers with `--fakeroot`, we strongly discourage users from creating independent base R containers:
+> 1. **Storage Footprint:** Full R containers with GIS/system libraries can be 5–15 GB each. Duplicating them across multiple user home folders rapidly exhausts cluster disk quota.
+> 2. **Library Fragmentation:** Compiling personal system-level libraries often leads to broken dependencies between compute nodes.
+>
+> **What should you do instead?**
+> Standard R packages (from CRAN, Bioconductor, and GitHub) install into your personal user directory with zero admin privileges. If you need a specialized system-level library or a new R release, **simply contact cluster administrators**—we add them centrally so they work everywhere immediately.
 
-- **Location**: `/data/shared/R/4.4.2`
-- **Version**: R 4.4.2 (2024-10-31) "Pile of Leaves"
-- **Setup script**: `/data/shared/R/setup-R.sh`
+---
 
-### Step 1: Load R Environment
+### Understanding the Tools: `RStudio Server` vs `R` vs `Rscript`
 
-Before using R, load the R environment:
+R on Tramuntana can be used in three distinct execution modes. Choose the right tool for your workflow:
 
+| Tool | Interface | Best For | Typical Use Cases | How to Launch |
+| :--- | :--- | :--- | :--- | :--- |
+| **RStudio Server** | Web GUI (Browser) | **Interactive Development & Exploration** | Writing code, plotting graphs, debugging R scripts, running Quarto / R Markdown documents, inspecting data frames. | **Open OnDemand** $\rightarrow$ Interactive Apps $\rightarrow$ RStudio Server |
+| **`R`** | CLI Interactive REPL (Terminal) | **Fast Interactive Testing & Prototyping** | Quick calculations, testing functions interactively in an SSH session or inside an interactive `salloc` compute allocation. | In terminal: `R-4.6` |
+| **`Rscript`** | CLI Headless / Batch (Terminal) | **Production Pipelines & SLURM Jobs** | Automated batch runs, scheduled cron jobs, parameter sweeps, and headless HPC workloads without GUI overhead. | In batch script: `Rscript-4.6 analysis.R` |
+
+---
+
+### Available Versions & How to Launch R
+
+Multiple versions of R can coexist on the cluster without interfering with each other. Current supported versions include:
+
+* **`R 4.6` (Open OnDemand & CLI):** The latest release environment.
+* **Future Versions:** When new versions (e.g., R 4.7) are released, administrators deploy a new image (`r_4.7.sif`) centrally. It immediately appears as a selectable option in Open OnDemand and as `R-4.7` / `Rscript-4.7` in the CLI without breaking existing user scripts.
+
+---
+
+#### 1. Web Portal via Open OnDemand (Interactive RStudio Server)
+
+The easiest and most interactive way to use R is through the **Open OnDemand** web portal:
+
+1. Open the Open OnDemand web portal in your browser.
+2. In the top navigation bar, go to **Interactive Apps** $\rightarrow$ **RStudio Server**.
+3. In the form:
+   - **R Version:** Choose your preferred version (e.g., `RStudio 4.6`).
+   - **Cores & Memory:** Request the CPU cores and RAM needed for your analysis (e.g., 4 cores, 16 GB).
+   - **Time:** Set your session duration.
+4. Click **Launch**. Once SLURM assigns a compute node, click **Connect to RStudio Server**.
+5. Your browser opens a full RStudio IDE session connected directly to the compute node.
+
+---
+
+#### 2. Command Line Interface (CLI) Execution
+
+When connected via SSH or inside an interactive compute session (`salloc`), you have two CLI options:
+
+##### A. Interactive Terminal Console (`R`)
+To launch an interactive R session directly in your terminal:
 ```bash
-# Load R
-source /data/shared/R/setup-R.sh
+# Launch interactive R 4.6
+R-4.6
+```
+This opens the familiar `> ` R prompt. To quit the interactive session, type `q()` and hit Enter.
 
-# Verify R is available
-R --version
+##### B. Non-Interactive Script Execution (`Rscript`)
+To run an R script file directly from the command line:
+```bash
+# Run script using R 4.6
+Rscript-4.6 my_analysis.R
+
+# Pass command line arguments to an R script
+Rscript-4.6 my_analysis.R input_data.csv --verbose
 ```
 
-### R Job Script Example
+---
+
+#### 3. SLURM Batch Job Script Example
+
+For long-running analyses, submit a headless batch job to SLURM using `Rscript`:
 
 ```bash
 #!/bin/bash
-#SBATCH --job-name=r-analysis
+#SBATCH --job-name=r-simulation
 #SBATCH --output=r-output-%j.txt
 #SBATCH --error=r-error-%j.err
 #SBATCH --ntasks=1
@@ -350,24 +405,19 @@ R --version
 #SBATCH --time=04:00:00
 #SBATCH --partition=cpu
 
-# Load R environment
-source /data/shared/R/setup-R.sh
+echo "Starting R batch job on $(hostname)..."
 
-# Print R information
-echo "R version:"
-R --version
+# Run R analysis non-interactively using the containerized wrapper
+Rscript-4.6 my_analysis.R
 
-echo "Running R analysis..."
-
-# Run R script
-Rscript my_analysis.R
-
-# Or use R CMD BATCH
-# R CMD BATCH my_analysis.R
-
-echo "Analysis complete!"
+echo "Job finished with exit code $?"
 ```
-### R Job Arrays - Running Multiple Similar Jobs
+
+---
+
+#### 4. SLURM Job Arrays (Parameter Sweeps & Parallel Tasks)
+
+When you need to process multiple data files or run simulations across different parameter sets, use SLURM Job Arrays:
 
 ```bash
 #!/bin/bash
@@ -380,163 +430,103 @@ echo "Analysis complete!"
 #SBATCH --mem=16G
 #SBATCH --time=02:00:00
 
-# Load R
-source /data/shared/R/setup-R.sh
+echo "Processing task $SLURM_ARRAY_TASK_ID on $(hostname)..."
 
-# Pass array task ID to R script
-Rscript analysis.R $SLURM_ARRAY_TASK_ID
-
-# Or create R script that uses the task ID
-R --vanilla <<EOF
-task_id <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
-cat("Processing task:", task_id, "\n")
-
-# Your R analysis here using task_id
-# For example: read different data files
-data_file <- paste0("data_", task_id, ".csv")
-data <- read.csv(data_file)
-
-# Process and save results
-results <- analyze(data)
-write.csv(results, paste0("results_", task_id, ".csv"))
-EOF
+# Pass the task ID directly into your R script
+Rscript-4.6 process_sample.R "$SLURM_ARRAY_TASK_ID"
 ```
 
-### Using RStudio Server for Interactive R Work
-
-RStudio Server provides a familiar RStudio interface in your web browser, running on the cluster's compute nodes with full access to your requested resources.
-
-#### When to Use RStudio Server vs Batch Jobs
-
-**Use RStudio Server for:**
-- Interactive data exploration and visualization
-- Developing and debugging R scripts
-- Testing code with different parameters
-- Interactive statistical analysis
-- Learning R or new packages
-
-**Use batch SLURM jobs for:**
-- Long-running analyses (>4 hours)
-- Production workflows
-- Automated pipelines
-- Jobs that don't need interaction
-
-#### Quick Start Guide
-
-**Step 1: Request Resources**
-
-From tramuntana, request compute resources:
-
-```bash
-# Basic session (8 CPUs, 16GB RAM, 4 hours)
-salloc --cpus-per-task=8 --mem=16G --time=04:00:00
-
-# Intensive session (16 CPUs, 64GB RAM, 8 hours)
-salloc --cpus-per-task=16 --mem=64G --time=08:00:00
-```
-
-Check which node was assigned:
-```bash
-squeue -u $USER
-# Note the NODELIST column (e.g., pampero, ada, tramuntana-n1, thor)
-```
-
-**Step 2: Create SSH Tunnel**
-
-From your PC (with VPN active), open a new terminal:
-
-```bash
-# Replace 'username' with your username
-# Replace 'nodename' with the node from squeue (e.g., pampero)
-ssh -L 8787:localhost:8787 -J username@tramuntana username@nodename
-```
-
-Keep this terminal open while using RStudio.
-
-**Step 3: Open RStudio**
-
-In your web browser, go to:
-```
-http://localhost:8787
-```
-
-Login with your LDAP credentials (same as tramuntana).
-
-**Step 4: Working in RStudio**
-
-Your RStudio session has:
-- Access to all your files in `/home/username/` and `/data/`
-- The exact resources you requested (CPUs, memory)
-- All R packages you've installed
-
-Verify your environment:
+Inside your `process_sample.R` script, retrieve the parameter using `commandArgs()`:
 ```r
-# Check you're on the right node
-system("hostname")
+args <- commandArgs(trailingOnly = TRUE)
+task_id <- as.integer(args[1])
+cat("Running analysis for sample ID:", task_id, "\n")
+```
 
-# Check available resources
-system("free -h")
-system("nproc")
+---
 
-# Check R library paths
+### Installing Packages & Tools: User vs. Administrator
+
+Because R runs inside a standardized container, the container's root filesystem is mounted **strictly read-only (`ro`)**. You cannot write directly to `/usr/local/lib/R/site-library`.
+
+Package and library management is clearly divided:
+
+| Category | Examples | Can Users Install It? | Installation Method | Storage Location |
+| :--- | :--- | :--- | :--- | :--- |
+| **R Packages (CRAN)** | `ggplot2`, `dplyr`, `tidyr`, `data.table` | ✅ **Yes (Self-service)** | `install.packages("pkg")` or `pak::pkg_install("pkg")` | User local directory (`$R_LIBS_USER`) |
+| **Bioconductor Packages** | `GenomicRanges`, `DESeq2`, `Biostrings` | ✅ **Yes (Self-service)** | `BiocManager::install("pkg")` | User local directory (`$R_LIBS_USER`) |
+| **GitHub / Development Packages** | Unreleased packages, community repos | ✅ **Yes (Self-service)** | `remotes::install_github("user/repo")` | User local directory (`$R_LIBS_USER`) |
+| **Personal R Functions & Scripts** | Custom user analysis routines | ✅ **Yes (Self-service)** | Save into your project or `~/R/` directory | User home or `/data/$USER/` |
+| **Linux OS Libraries & C/C++ Headers** | `libgdal-dev`, `libgeos-dev`, `libproj-dev`, `libudunits2-dev`, `libnetcdf-dev`, `libhdf5-dev` | ❌ **No (Requires root inside OS image)** | **Contact Admins.** Admins add system packages into the base image. | Shared container (`/data/shared/containers/r/`) |
+| **GPU / CUDA Backends** | PyTorch / TensorFlow R bindings, CUDA drivers | ❌ **No (Host driver dependency)** | **Contact Admins** | System & container level |
+
+> [!NOTE]
+> If an R package fails to install with a message like `configure: error: gdal-config not found` or `libgeos not found`, this means the R package requires an underlying Linux system library that is missing from the container image. **Contact the administrators** to have the system dependency baked into the standardized image.
+
+---
+
+### Setting Up Your Personal R Library (Quota Protection)
+
+By default, R attempts to save personal packages to `~/R/x86_64-pc-linux-gnu-library/<version>/`. 
+
+Because your home directory (`/home/username`) has a **200 GB quota limit**, installing dozens of large packages (especially heavy packages with compiled binaries) can fill up your home storage.
+
+#### Recommended Practice: Store Packages in `/data`
+We strongly recommend directing R to store your libraries in your group's `/data` directory:
+
+1. Create a personal R library directory on `/data`:
+   ```bash
+   mkdir -p "/data/$USER/R/library"
+   ```
+
+2. Add the following line to your personal `~/.Renviron` file:
+   ```bash
+   echo 'R_LIBS_USER="/data/'$USER'/R/library-%v"' >> ~/.Renviron
+   ```
+   *(The `%v` token automatically expands to the active R major.minor version, such as `4.6`, keeping packages cleanly separated between R versions).*
+
+---
+
+### Testing and Verifying Your Local Package Installation
+
+Follow this 4-step verification procedure to confirm that your packages install into your personal directory and persist across sessions and compute nodes:
+
+#### Step 1: Verify Library Search Paths
+Launch R from your terminal (`R-4.6`) or open RStudio Server, and check `.libPaths()`:
+```r
 .libPaths()
-# Should show: ~/R/x86_64-pc-linux-gnu-library/4.4
 ```
+**Expected Output:**
+```text
+[1] "/data/username/R/library-4.4"
+[2] "/usr/local/lib/R/site-library"
+[3] "/usr/lib/R/library"
+```
+The first entry must be your writable personal path, while the remaining entries are the read-only cluster system libraries.
 
-**Step 5: Install Packages**
-
-Packages install automatically to your personal library:
-
+#### Step 2: Install a Test Package
+Install a lightweight community package from CRAN:
 ```r
-install.packages("ggplot2")
-install.packages("dplyr")
-install.packages("tidyr")
+install.packages("praise")
 ```
+Notice that R automatically downloads and compiles the package into your personal library without throwing read-only permission errors.
 
-Installed packages are available in both RStudio Server and SLURM batch jobs.
-
-**Step 6: Close Session**
-
-When finished:
-1. Save your work in RStudio
-2. Close browser tab
-3. In the terminal where you're connected to the node: `exit`
-4. Close the SSH tunnel terminal (Ctrl+C)
-
-#### RStudio Server Tips
-
-**Package Management:**
-- Packages install once and are available everywhere
-- Check what's installed: `.libPaths()` and `installed.packages()`
-- Large packages (>100MB) count toward your home quota
-
-**Working with Data:**
-- Small datasets (<10GB): Can keep in `/home/`
-- Large datasets: Store in `/data/YourGroup/` and read directly
-- Very large data: Consider reading in chunks with `data.table::fread()`
-
-**Resource Monitoring:**
+#### Step 3: Verify the Installed Path
+Check where the package was installed:
 ```r
-# Monitor memory usage
-pryr::mem_used()
-
-# Clear large objects
-rm(large_object)
-gc()  # Force garbage collection
+find.package("praise")
+```
+**Expected Output:**
+```text
+[1] "/data/username/R/library-4.6/praise"
 ```
 
-**Saving Work:**
-- RStudio auto-saves your scripts
-- For long sessions, manually save workspace: `save.image("mywork.RData")`
-- Load later: `load("mywork.RData")`
-
-**Common Issues:**
-
-- **Port already in use**: Use different port: `ssh -L 18787:localhost:8787 ...` then open `http://localhost:18787`
-- **Session timeout**: RStudio closes after 2 hours of inactivity - save regularly
-- **Out of memory**: Request more with `salloc --mem=...`
-
-For detailed instructions and troubleshooting, see the separate RStudio Server user guide.
+#### Step 4: Test Cross-Node Persistence via SLURM
+Exit R and run a one-line test through SLURM to verify that compute nodes can access your newly installed package immediately:
+```bash
+srun --partition=cpu Rscript-4.6 -e 'library(praise); praise("${EXCLAMATION}! You are ${adjective}!")'
+```
+If you see the output string, your personal package installation is fully functional, isolated, and accessible across the entire cluster!
 
 ---
 
