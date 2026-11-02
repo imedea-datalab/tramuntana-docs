@@ -1,6 +1,6 @@
 # Software & Environments
 
-This guide covers everything you need to know about setting up software environments (`uv` & Conda) and R on the Tramuntana cluster.
+This guide covers everything you need to know about setting up Python (`uv` & Conda), R, MATLAB, Pixi (system-level libraries without sudo), and Apptainer (custom containers) on the Tramuntana cluster.
 
 **Other Practical Guides:**
 - [**Quick Start & Commands**](0-quick-start.md) — Connecting to the cluster and running your first job.
@@ -10,17 +10,19 @@ This guide covers everything you need to know about setting up software environm
 
 ## Table of Contents
 
-1. [Setting Up Environments](#setting-up-environments)
+1. [Python](#python)
 2. [Using R for Statistical Computing](#using-r-for-statistical-computing)
 3. [Using MATLAB on the Cluster](#using-matlab-on-the-cluster)
+4. [Pixi: Adding System-Level Libraries & Compilers (Without Sudo)](#pixi-adding-system-level-libraries--compilers-without-sudo)
+5. [Apptainer: Custom Containers (When Nothing Else Works)](#apptainer-custom-containers-when-nothing-else-works)
 
 ---
 
-## Setting Up Environments
+## Python
 
 Before running your Python code on the cluster, you need a place to put all the tools and libraries your code needs. Think of an **environment** like a dedicated sandbox for your project. If Project A needs an older version of a library, and Project B needs a newer version, you don't want them fighting. Environments keep everything neatly separated so the sand from one castle doesn't mix with another.
 
-We offer two main ways to manage your environments: **uv** (highly recommended) and **Conda**.
+We offer two main ways to manage your Python environments: **uv** (highly recommended) and **Conda**.
 
 ---
 
@@ -457,11 +459,113 @@ Package and library management is clearly divided:
 | **Bioconductor Packages** | `GenomicRanges`, `DESeq2`, `Biostrings` | ✅ **Yes (Self-service)** | `BiocManager::install("pkg")` | User local directory (`$R_LIBS_USER`) |
 | **GitHub / Development Packages** | Unreleased packages, community repos | ✅ **Yes (Self-service)** | `remotes::install_github("user/repo")` | User local directory (`$R_LIBS_USER`) |
 | **Personal R Functions & Scripts** | Custom user analysis routines | ✅ **Yes (Self-service)** | Save into your project or `~/R/` directory | User home or `/data/$USER/` |
-| **Linux OS Libraries & C/C++ Headers** | `libgdal-dev`, `libgeos-dev`, `libproj-dev`, `libudunits2-dev`, `libnetcdf-dev`, `libhdf5-dev` | ❌ **No (Requires root inside OS image)** | **Contact Admins.** Admins add system packages into the base image. | Shared container (`/data/shared/containers/r/`) |
+| **Linux OS Libraries & C/C++ Headers** | `libgdal-dev`, `libgeos-dev`, `libproj-dev`, `libudunits2-dev`, `libnetcdf-dev`, `libhdf5-dev` | ❌ **No (Requires root inside OS image)** | **Contact Admins** (or use **Pixi** for a local R stack) | Shared container (`/data/shared/containers/r/`) |
 | **GPU / CUDA Backends** | PyTorch / TensorFlow R bindings, CUDA drivers | ❌ **No (Host driver dependency)** | **Contact Admins** | System & container level |
 
-> [!NOTE]
-> If an R package fails to install with a message like `configure: error: gdal-config not found` or `libgeos not found`, this means the R package requires an underlying Linux system library that is missing from the container image. **Contact the administrators** to have the system dependency baked into the standardized image.
+---
+
+### Handling Missing Linux System Libraries (e.g., GDAL, GEOS, NetCDF)
+
+When installing specialized R packages (especially geospatial, environmental, climate, or bio packages like `sf`, `terra`, `ncdf4`, or `rgdal`), package installation from CRAN or GitHub may fail with a compilation error:
+```text
+configure: error: gdal-config not found or libgeos not found.
+ERROR: configuration failed for package ‘sf’
+```
+
+This error means the R package requires underlying **compiled Linux C/C++ system libraries and header files** (`libgdal-dev`, `libgeos-dev`, `libproj-dev`, `libnetcdf-dev`, `libudunits2-dev`).
+
+Because the cluster's standardized R container filesystem is strictly read-only (`ro`), you cannot run `sudo apt-get install` inside the container. If you encounter this, you have **two paths forward**:
+
+#### Path 1 (⭐️ Highly Recommended): Inform the Cluster Administrators
+
+The cleanest, easiest, and most resource-efficient option is to have the system library added to the cluster's shared R image:
+
+1. **Contact cluster admins**: Email or message the administration team with the R package and the required system libraries (e.g., *"I need `sf` and `terra`, which require GDAL and GEOS"*).
+2. **Admins bake it into the shared image**: Administrators will update the central container image (`/data/shared/containers/r/`) with the necessary Linux packages and C/C++ headers.
+3. **Key Advantages**:
+   * **Zero User Quota Impact**: System libraries and dependencies are stored in the shared container image, consuming **0 MB** of your personal `/home` or `/data` disk quota.
+   * **Works Across All Nodes**: Available immediately on all CPU, GPU, and login nodes without configuration drift.
+   * **Fully Compatible with Open OnDemand RStudio**: Works out of the box in the Open OnDemand web portal, interactive RStudio Server, and CLI wrappers (`R-4.6`, `Rscript-4.6`).
+
+---
+
+#### Path 2 (Self-Service): Install a Local R & Needed Libraries Using `pixi`
+
+If you require specialized or bleeding-edge system libraries immediately and cannot wait for admin intervention, or need full autonomy over your stack, you can create a **local, user-space R environment using `pixi`**. *(For a comprehensive guide on Pixi's general capabilities, C/C++ compilers, and system utilities, see [Section 4: Pixi](#pixi-adding-system-level-libraries--compilers-without-sudo)).*
+
+> [!IMPORTANT]
+> **Why does Pixi install its own R instead of using the cluster's R?**  
+> You **cannot** simply install C/C++ libraries locally and tell the cluster's containerized `R-4.6` to link against them. Mixing host libraries with container runtimes causes fatal ABI (`glibc` and `libstdc++`) version incompatibilities.  
+> Instead, **Pixi installs your own private copy of R along with the exact matching C/C++ libraries and R packages**, guaranteeing 100% binary compatibility inside a project sandbox.
+
+##### What is Pixi?
+* **Pixi** is a modern, ultra-fast scientific package manager built on top of the **Conda-Forge** binary repository. The `pixi` command is pre-installed and available in your `$PATH` across all cluster nodes.
+* Unlike legacy Conda, Pixi **does not pollute a messy global directory** (`~/.conda`). It behaves like `uv` or Cargo: all packages, shared libraries, and your personal R binary are stored cleanly in a `.pixi/` directory inside your specific project folder.
+* **No Root Required**: Everything installs 100% in user space.
+* **Pre-compiled Binaries**: Pixi downloads ready-to-run Linux packages—you do not have to spend hours waiting for C/C++ code to compile from source.
+
+##### Step-by-Step: Setting Up Your Own R Stack with Pixi
+
+1. **Create your project folder on `/data`**:  
+   *(Always build environments on `/data` to protect your 200 GB home directory quota!)*
+   ```bash
+   mkdir -p /data/$USER/my_r_project
+   cd /data/$USER/my_r_project
+   ```
+
+2. **Initialize Pixi**:
+   ```bash
+   pixi init
+   ```
+   This creates a `pixi.toml` file to track your project's dependencies and lockfile.
+
+3. **Add R and the required system libraries & packages**:
+   ```bash
+   # Installs your own private R runtime, GDAL, GEOS, PROJ, and matching R packages:
+   pixi add r-base gdal geos proj r-sf r-terra r-tidyverse
+   ```
+   *Pixi downloads the pre-compiled packages and places them into `.pixi/envs/default/`.*
+
+4. **Run R interactively or execute scripts**:
+   Whenever you want to use your local R environment, prepend your command with `pixi run`:
+   ```bash
+   # Launch your local interactive R console:
+   pixi run R
+
+   # Run an R script directly:
+   pixi run Rscript analysis.R
+   ```
+   *`pixi run` automatically activates your project's local environment, executes the command, and cleanly exits.*
+
+5. **Submitting SLURM Batch Jobs with Pixi**:  
+   You do not need to target specific nodes with `--nodelist`! Because `/data` is shared across all nodes and Conda-Forge packages are built for standard `x86_64` Linux CPUs, your Pixi environment runs seamlessly on any compute node:
+
+   ```bash
+   #!/bin/bash
+   #SBATCH --job-name=pixi-r-job
+   #SBATCH --output=pixi-r-%j.out
+   #SBATCH --error=pixi-r-%j.err
+   #SBATCH --partition=cpu
+   #SBATCH --cpus-per-task=8
+   #SBATCH --mem=32G
+   #SBATCH --time=04:00:00
+
+   # Navigate to your project directory on /data
+   cd /data/$USER/my_r_project
+
+   # Execute your analysis using your local Pixi R environment
+   pixi run Rscript analysis.R
+   ```
+
+##### Comparison: Which Path Should You Choose?
+
+| Feature | Path 1: Central Shared R (`R-4.6`) | Path 2: Local Pixi R (`.pixi/`) |
+| :--- | :--- | :--- |
+| **Best For** | Everyday research & interactive Open OnDemand RStudio | Niche C++ dependencies, rapid experimentation, standalone SLURM batch jobs |
+| **Open OnDemand RStudio Web** | ✅ **Yes** (Interactive web IDE) | ❌ **No** (CLI and SLURM batch scripts only) |
+| **Disk Quota Used** | **0 MB** (reads from shared image) | ~1–3 GB per project folder on `/data` |
+| **Admin Permissions** | Requires admin to update the central image | ❌ **No root needed** (100% user-managed) |
+| **SLURM Execution** | `Rscript-4.6 analysis.R` | `pixi run Rscript analysis.R` |
 
 ---
 
@@ -474,16 +578,40 @@ Because your home directory (`/home/username`) has a **200 GB quota limit**, ins
 #### Recommended Practice: Store Packages in `/data`
 We strongly recommend directing R to store your libraries in your group's `/data` directory:
 
-1. Create a personal R library directory on `/data`:
+1. Create your base R directory on `/data`:
    ```bash
-   mkdir -p "/data/$USER/R/library"
+   mkdir -p "/data/GroupName/$USER/R"
    ```
 
-2. Add the following line to your personal `~/.Renviron` file:
+2. Configure your personal library path in `~/.Rprofile`:
+   *(In Rocker containers, R's internal startup configuration overrides `~/.Renviron`. Using `~/.Rprofile` is the official, bulletproof method to guarantee your personal directory is prioritized at position `[1]`):*
    ```bash
-   echo 'R_LIBS_USER="/data/'$USER'/R/library-%v"' >> ~/.Renviron
+   nano ~/.Rprofile
    ```
-   *(The `%v` token automatically expands to the active R major.minor version, such as `4.6`, keeping packages cleanly separated between R versions).*
+   Put this inside (make sure to replace `GroupName` with your actual research group name, e.g. `DataLab`), the final path added ( for installing the libraries ) in this example will be `/data/GroupName/myUserName/R/library-4.6` where myUserName is the logged in username on the cluster:
+   ```r
+   local({
+     user <- Sys.info()[["user"]]
+     user_lib <- sprintf("/data/GroupName/%s/R/library-%s.%s", user, R.version$major, sub("\\..*", "", R.version$minor))
+     dir.create(user_lib, recursive = TRUE, showWarnings = FALSE)
+     .libPaths(c(user_lib, .libPaths()))
+   })
+   ```
+   Save and exit (Ctrl+O, Enter, Ctrl+X).
+   Now run:
+   ```bash
+   R-4.6 -e '.libPaths()'
+   ```
+   *(Notice that `dir.create(user_lib, recursive = TRUE)` automatically creates the exact versioned folder—such as `/data/GroupName/$USER/R/library-4.6`—the moment R launches. You do not have to manually `mkdir` new folders every time a new R version is released!)*
+
+> [!TIP]
+> **What about `~/.Renviron`?**  
+> `~/.Renviron` does not exist by default on fresh accounts and is **not required**. If you previously added `R_LIBS_USER` or `R_LIBS` to `~/.Renviron`, you can safely remove those lines (or run `rm -f ~/.Renviron`) so your configuration stays completely clean.
+
+> [!NOTE]
+> **Does storing libraries on `/data` affect execution speed?**  
+> **No, not at all.** Just like in Python, R loads package functions and compiled C/C++ libraries into the compute node's **local physical RAM** once when `library(package)` is called at the beginning of your script.  
+> Once loaded into memory, all calculations, loops, simulations, and data manipulations execute **100% inside local RAM and CPU cache**—R never re-reads library files from the `/data` disk during your simulation. The initial load time difference between `/home` and `/data` is negligible (milliseconds) and cached in local memory by the Linux kernel.
 
 ---
 
@@ -498,9 +626,9 @@ Launch R from your terminal (`R-4.6`) or open RStudio Server, and check `.libPat
 ```
 **Expected Output:**
 ```text
-[1] "/data/username/R/library-4.4"
+[1] "/data/GroupName/$USER/R/library-4.6"
 [2] "/usr/local/lib/R/site-library"
-[3] "/usr/lib/R/library"
+[3] "/usr/local/lib/R/library"
 ```
 The first entry must be your writable personal path, while the remaining entries are the read-only cluster system libraries.
 
@@ -518,7 +646,7 @@ find.package("praise")
 ```
 **Expected Output:**
 ```text
-[1] "/data/username/R/library-4.6/praise"
+[1] "/data/GroupName/$USER/R/library-4.6/praise"
 ```
 
 #### Step 4: Test Cross-Node Persistence via SLURM
@@ -708,5 +836,395 @@ which export_fig
 ```
 
 The toolbox is now permanently available across all interactive sessions and SLURM jobs!
+
+---
+
+## Pixi: Adding System-Level Libraries & Compilers (Without Sudo)
+
+On a shared scientific cluster, researchers frequently encounter software or packages that demand system-level installations:
+* Newer compiler versions (`gcc-13`, `clang-17`, `cmake >= 3.28`, `ninja`)
+* System C/C++ libraries and headers (`ffmpeg`, `libgdal-dev`, `libgeos-dev`, `libhdf5-dev`, `libnetcdf-dev`, `boost`, `openblas`)
+* Domain CLI tools (`samtools`, `bedtools`, `pandoc`, `imagemagick`)
+* Low-level GPU toolkits (`cuda-toolkit`, `cudnn`, `nvcc`)
+
+On Tramuntana, compute nodes have immutable operating systems—**you cannot run `sudo apt-get install`**, and administrators cannot install conflicting libraries globally without risking job failures or node drift across the cluster.
+
+This is where **Pixi** comes in.
+
+---
+
+### What is Pixi? (The General Purpose)
+
+While you saw Pixi used in our [R guide](#handling-missing-linux-system-libraries-eg-gdal-geos-netcdf) to install local geospatial libraries (`gdal`, `geos`), **that is only one specific application**. 
+
+**Pixi's general super-power is allowing any user to install system-level packages, C/C++ compilers, scientific libraries, and CLI tools completely in user space—without root privileges and without contaminating the host operating system.**
+
+* **Built on Conda-Forge:** Access to over 25,000+ pre-compiled Linux binary packages.
+* **Project-Centric (`.pixi/`):** Unlike legacy Conda (which pollutes a monolithic `~/.conda/` directory in your home folder), Pixi behaves like `uv` or Cargo: all binaries, libraries, and headers are stored in a `.pixi/` folder inside your project directory.
+* **Lockfile Reproducibility (`pixi.lock`):** Automatically pins the exact binary version of every dependency. If your job runs on `thor`, `ada`, or `pampero`, it runs with 100% identical binary reproducibility.
+* **Zero Host Impact:** When you no longer need the environment, simply deleting the project folder completely removes all installed packages.
+
+---
+
+### When to Use Which Tool? (Quick Decision Guide)
+
+| Tool | Best For | Storage Location | Sudo Required? | SLURM Command |
+| :--- | :--- | :--- | :--- | :--- |
+| **`uv`** | Pure Python projects & machine learning (PyTorch, NumPy) | `.venv/` in project | ❌ No | `uv run python script.py` |
+| **`Pixi`** | C/C++ compilers, system libraries (`gdal`, `hdf5`, `ffmpeg`), multi-language stacks | `.pixi/` in project | ❌ No | `pixi run <command>` |
+| **`Apptainer`** | Commercial software (MATLAB), official Docker images, or full custom Linux OS distributions | Shared SIFs or `/data/$USER/*.sif` | ❌ No (runs container) | `matlab2025b` / `apptainer exec ...` |
+| **`Conda`** | Legacy existing environments | `~/.conda/` (or `/data/$USER/conda/`) | ❌ No | `conda activate ...` |
+
+---
+
+### Core Use Cases for Pixi on Tramuntana
+
+#### 1. Modern C/C++ Compilers & Build Tools (Without Root)
+If the host operating system has an older compiler (e.g., GCC 11) and your code requires modern C++20/C++23 features or modern CMake:
+```bash
+pixi add gcc=13 gxx=13 cmake ninja make
+```
+You can compile your code entirely with modern compilers inside your local sandbox.
+
+#### 2. Scientific C/C++ & Math Libraries
+If you are compiling simulation codes or installing packages that need underlying compiled headers and `.so` libraries:
+```bash
+pixi add boost hdf5 netcdf-cxx4 openblas fftw openmp
+```
+Pixi automatically configures include paths (`.pixi/envs/default/include`) and library link paths (`.pixi/envs/default/lib`).
+
+#### 3. Multimedia & Geospatial CLI Tools
+Need command-line tools that usually require `apt-get`? Install them instantly as pre-compiled binaries:
+```bash
+# Video and multimedia processing:
+pixi add ffmpeg
+
+# Geospatial command-line tools (gdal_translate, ogr2ogr):
+pixi add gdal
+
+# Bioinformatics command-line tools:
+pixi add samtools bedtools --channel bioconda
+```
+
+#### 4. Isolated CUDA & GPU Toolkits
+If your GPU code requires a specific CUDA toolkit version (`cuda-toolkit`, `nvcc`, `cudnn`) without modifying the host NVIDIA driver:
+```bash
+pixi add cuda-toolkit=12.4
+```
+The user-space CUDA runtime runs in your project and communicates seamlessly with the host GPU through the host's NVIDIA driver.
+
+#### 5. Polyglot Projects (C++ Backend + Python / R Frontend)
+If your project combines a compiled C++ simulation with Python analysis scripts or R plotting, Pixi manages all tools in the *same* environment with guaranteed binary compatibility and a single `pixi.lock` file.
+
+---
+
+### Step-by-Step Guide: Using Pixi
+
+> [!IMPORTANT]
+> **Always create your Pixi project on `/data`!**  
+> Packages, compilers, and dependencies can take 1–3 GB. Storing them inside `/data/$USER/` ensures you never fill up your 200 GB `/home` directory quota.
+
+#### Step 1: Create and Initialize Your Project Folder
+```bash
+mkdir -p /data/$USER/my_pixi_project
+cd /data/$USER/my_pixi_project
+
+# Initialize a new Pixi project
+pixi init
+```
+This generates:
+* `pixi.toml`: Manifest tracking your project dependencies.
+* `pixi.lock`: Lockfile guaranteeing exact version pinning across all cluster nodes.
+
+#### Step 2: Add Packages and Libraries
+Search for any package on [Conda-Forge](https://prefix.dev/) and add it:
+```bash
+# Example: Adding modern C++ compilers and CMake
+pixi add gcc=13 gxx=13 cmake ninja
+
+# Example: Adding system libraries
+pixi add hdf5 boost
+
+# Example: Adding CLI utilities
+pixi add ffmpeg
+```
+Pixi downloads the pre-compiled packages and places them into `.pixi/envs/default/`.
+
+#### Step 3: Run Commands in the Environment
+You have two ways to execute commands inside your Pixi environment:
+
+##### Option A: `pixi run` (Recommended for scripts & jobs)
+Prepend any command with `pixi run`. Pixi automatically activates the environment, sets `$PATH` and `$LD_LIBRARY_PATH`, executes the command, and exits:
+```bash
+pixi run gcc --version
+pixi run ffmpeg -version
+pixi run cmake -B build -G Ninja
+pixi run cmake --build build
+```
+
+##### Option B: `pixi shell` (Interactive Session)
+If you are doing exploratory interactive work, drop into an activated subshell:
+```bash
+pixi shell
+```
+Inside the subshell, all your installed tools (`gcc`, `g++`, `cmake`, `ffmpeg`) are directly in your `$PATH`. When finished, simply type `exit`.
+
+---
+
+### Practical Example: Compiling & Running a C++ Simulation
+
+Here is a complete workflow for compiling a modern C++ simulation with CMake and HDF5 on Tramuntana:
+
+```bash
+# 1. Setup project
+mkdir -p /data/$USER/simulation && cd /data/$USER/simulation
+pixi init
+
+# 2. Add compilers, build tools, and HDF5 library
+pixi add gcc=13 gxx=13 cmake ninja hdf5
+
+# 3. Configure and build with CMake
+pixi run cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+pixi run cmake --build build
+
+# 4. Run the compiled binary
+pixi run ./build/my_simulation
+```
+
+---
+
+### Submitting Pixi Jobs to SLURM
+
+Because `/data` is shared across all nodes on the cluster and Conda-Forge binaries are standard `x86_64` Linux packages, your Pixi environment runs identically on any compute node.
+
+In your SLURM batch script, simply use `pixi run`:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=pixi_job
+#SBATCH --output=pixi_%j.out
+#SBATCH --error=pixi_%j.err
+#SBATCH --partition=cpu
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=04:00:00
+
+# 1. Navigate to your project directory on /data
+cd /data/$USER/simulation
+
+# 2. Execute your program using pixi run
+pixi run ./build/my_simulation
+```
+
+> [!TIP]
+> **Why `pixi run` is superior in SLURM scripts:**  
+> Unlike Conda, you do **not** need `source ~/.bashrc`, `conda activate`, or environment path wrestling. `pixi run` detects the local `.pixi/` directory, activates all environment variables on the fly, runs the binary, and cleanly exits.
+
+---
+
+### Useful Pixi Commands Cheatsheet
+
+| Command | Description |
+| :--- | :--- |
+| `pixi init` | Initializes a new project in the current directory (`pixi.toml`). |
+| `pixi add <pkg>` | Adds and installs a package from Conda-Forge into `.pixi/`. |
+| `pixi add <pkg> --channel bioconda` | Installs a package from an alternative channel (e.g., Bioconda). |
+| `pixi remove <pkg>` | Uninstalls a package and removes it from `pixi.toml` and `pixi.lock`. |
+| `pixi list` | Shows all installed packages and their exact versions. |
+| `pixi run <command>` | Runs a command inside the isolated project environment. |
+| `pixi shell` | Starts an interactive shell with the environment activated. |
+| `pixi clean` | Removes the `.pixi/` environment directory to free up disk space. |
+
+---
+
+## Apptainer: Custom Containers (When Nothing Else Works)
+
+The tools above cover the vast majority of research needs:
+
+| Tool | What it covers |
+| :--- | :--- |
+| **`uv` / Conda** | Python versions and Python packages |
+| **R & MATLAB** | Ready-to-use, centrally maintained containers (`R-4.6`, `matlab2025b`) |
+| **Pixi** | Compilers, system libraries (`gdal`, `hdf5`, `ffmpeg`), CLI tools, CUDA toolkits — all without `sudo` |
+
+However, there are a few things **none of these tools can do**. For those cases, you can use **Apptainer** (formerly Singularity), the standard container platform for HPC clusters.
+
+---
+
+### What is Apptainer?
+
+Apptainer packages an **entire Linux operating system** (e.g., Ubuntu 24.04 or Rocky Linux 9), along with all your software, into a single image file (`.sif`). When you run it, your program sees the container's OS and libraries instead of the cluster's — but it still runs directly on the cluster's CPUs and GPUs with **no virtual machine overhead**.
+
+* **No root needed to run:** Containers run with your normal user permissions.
+* **Your files are available inside:** Your `/home` and `/data` directories can be accessed from inside the container.
+* **GPU support:** Add the `--nv` flag and the container can use the node's NVIDIA GPUs.
+* **You already use it:** The cluster's `R-4.6` and `matlab2025b` commands are actually Apptainer containers behind small wrapper scripts!
+
+---
+
+### When Do You Need Apptainer? (Things Pixi & uv Cannot Do)
+
+Use Apptainer **only** if your case matches one of these:
+
+#### 1. A Paper or Tool Ships as a Docker Image
+If a project says *"run our software with `docker pull lab/model:v1`"*, you cannot use Docker on the cluster — but Apptainer can run Docker images directly:
+```bash
+apptainer run docker://lab/model:v1
+```
+
+#### 2. Software Only Available via `apt-get` / `.deb` / `.rpm`
+If a tool is **not on Conda-Forge** (so `pixi add` fails) and the installation instructions only say `sudo apt-get install ...` or provide a `.deb` package, a container lets you run `apt-get install` inside your own private OS.
+
+#### 3. Software Expecting Hardcoded System Paths
+Some older or commercial tools insist on files in fixed locations like `/etc/tool.conf`, `/opt/vendor/`, or `/usr/share/...`. Only a container gives you your own root filesystem where these paths can exist.
+
+#### 4. Exact Reproduction of a Full Software Stack
+If you must reproduce a published environment **exactly** (specific OS version + specific libraries), or move the same environment between Tramuntana and another supercomputer (e.g., MareNostrum), a single `.sif` file is the most portable option.
+
+> [!TIP]
+> **Always try Pixi first!**  
+> Before reaching for a container, check whether `pixi add <package>` works. In the vast majority of cases, Conda-Forge already has the library or tool you need, and Pixi installs it in seconds instead of building a multi-gigabyte image.
+
+---
+
+### ⚠️ Before You Start: Contact the Cluster Administrators
+
+> [!IMPORTANT]
+> **Please consult the cluster admins before building your own container.**  
+> Apptainer images are **heavy applications**: a single `.sif` file is typically **5–30 GB**, and building one uses a lot of temporary disk space, CPU, and memory. To keep shared storage and nodes healthy for everyone, please get in touch first.
+
+When you contact the admins, please include:
+1. **What software you need** and a link to its installation instructions or Docker image.
+2. **Why Pixi / uv do not work** for this case (e.g., *"not on Conda-Forge, only a `.deb` package is provided"*).
+3. **Whether you need GPUs** and roughly how often you will run it.
+
+The admins may be able to:
+* **Point you to an easier solution** (e.g., a Pixi package you missed, or an existing container).
+* **Build it centrally** in `/data/shared/containers/` — so it uses **0 GB** of your quota and is available to your whole group, just like `R-4.6` and `matlab2025b`.
+* **Enable container building (`--fakeroot`) for your account** if you need to build and iterate on your own image.
+
+---
+
+### Option A: Running an Existing Docker Image
+
+The simplest case: convert a Docker image into a `.sif` file and run it.
+
+#### Step 1: Redirect the Apptainer Cache to `/data`
+By default, Apptainer stores downloaded layers in `~/.apptainer/cache`, which can quickly fill your `/home` quota. Redirect it to `/data` first:
+```bash
+mkdir -p /data/$USER/apptainer/{cache,tmp,images}
+export APPTAINER_CACHEDIR=/data/$USER/apptainer/cache
+export APPTAINER_TMPDIR=/data/$USER/apptainer/tmp
+```
+*(Add the two `export` lines to your `~/.bashrc` to make this permanent.)*
+
+#### Step 2: Pull the Image
+```bash
+cd /data/$USER/apptainer/images
+apptainer pull my_tool.sif docker://lab/model:v1
+```
+
+#### Step 3: Run Commands Inside the Container
+```bash
+# Run a single command inside the container:
+apptainer exec --bind /data /data/$USER/apptainer/images/my_tool.sif my_command --help
+
+# Open an interactive shell inside the container:
+apptainer shell --bind /data /data/$USER/apptainer/images/my_tool.sif
+```
+
+---
+
+### Option B: Building Your Own Container (After Consulting the Admins)
+
+If you need to install software with `apt-get` inside your own OS, you write a small **definition file** (a recipe) and build the image from it.
+
+#### Step 1: Write a Definition File (`my_env.def`)
+```singularity
+Bootstrap: docker
+From: ubuntu:24.04
+
+%post
+    # Runs once during the build, as "root" inside the container
+    apt-get update && apt-get install -y \
+        build-essential \
+        cmake \
+        some-tool-only-on-apt
+    apt-get clean
+
+%environment
+    # Environment variables set every time the container runs
+    export LC_ALL=C
+
+%runscript
+    # Default command for `apptainer run`
+    exec "$@"
+```
+
+#### Step 2: Build the Image
+```bash
+cd /data/$USER/apptainer
+apptainer build --fakeroot images/my_env.sif my_env.def
+```
+* `--fakeroot` lets you act as "root" **inside the container only** (to run `apt-get`), without any real admin rights on the cluster.
+* If you get a permission or `subuid` error, `--fakeroot` has not been enabled for your account yet — contact the admins.
+
+#### Step 3: Test It
+```bash
+apptainer exec --bind /data images/my_env.sif some-tool-only-on-apt --version
+```
+
+> [!NOTE]
+> **Containers are read-only once built.**  
+> You cannot `apt-get install` into an existing `.sif`. To add software, edit `my_env.def` and rebuild. Keep the `.def` file in Git — it is your reproducible recipe, while the `.sif` itself is too large to version-control.
+
+---
+
+### Using GPUs Inside a Container
+
+Add the `--nv` flag. Apptainer automatically makes the node's NVIDIA driver and GPU devices available inside the container, so any CUDA version inside your image can use the physical GPU:
+```bash
+apptainer exec --nv --bind /data my_env.sif nvidia-smi
+apptainer exec --nv --bind /data my_env.sif python train.py
+```
+
+---
+
+### Submitting Apptainer Jobs to SLURM
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=apptainer_job
+#SBATCH --output=apptainer_%j.out
+#SBATCH --error=apptainer_%j.err
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu_mem:20             # Request 20 GB of GPU VRAM
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --time=04:00:00
+
+# Path to your container image
+SIF=/data/$USER/apptainer/images/my_env.sif
+
+cd /data/$USER/my_project
+
+# --nv enables GPU access (omit it for CPU-only jobs)
+apptainer exec --nv --bind /data "$SIF" ./run_analysis.sh
+```
+
+---
+
+### Useful Apptainer Commands Cheatsheet
+
+| Command | Description |
+| :--- | :--- |
+| `apptainer pull <name>.sif docker://<image>` | Downloads a Docker image and converts it into a `.sif` file. |
+| `apptainer build --fakeroot <name>.sif <recipe>.def` | Builds a custom image from a definition file. |
+| `apptainer exec <image>.sif <command>` | Runs a single command inside the container. |
+| `apptainer shell <image>.sif` | Opens an interactive shell inside the container. |
+| `apptainer run <image>.sif` | Executes the container's default `%runscript`. |
+| `--bind /data` | Makes `/data` available inside the container. |
+| `--nv` | Enables NVIDIA GPU access inside the container. |
+| `apptainer cache clean` | Deletes cached image layers to free up disk space. |
 
 
