@@ -15,9 +15,10 @@ This guide covers advanced usage of SLURM, including deep-dives into job paramet
 | 1 | [Important SLURM Arguments Explained](#1-important-slurm-arguments-explained) |
 | 2 | [Checking Resource Usage (GPU, CPU, RAM)](#2-checking-resource-usage-gpu-cpu-ram) |
 | 3 | [Job Arrays — Running Many Independent Jobs](#3-job-arrays--running-many-independent-jobs) |
-| 4 | [Commands & Monitoring Reference](#4-commands--monitoring-reference) |
-| 5 | [Transferring Files with `rsync` (Local ↔ Cluster)](#5-transferring-files-with-rsync-local--cluster) |
-| 6 | [SSH Setup & Passwordless Login (Linux, macOS, Windows)](#6-ssh-setup--passwordless-login-linux-macos-windows) |
+| 4 | [Job Dependencies — Running Successive & Chained Jobs (Pipelines)](#4-job-dependencies--running-successive--chained-jobs-pipelines) |
+| 5 | [Commands & Monitoring Reference](#5-commands--monitoring-reference) |
+| 6 | [Transferring Files with `rsync` (Local ↔ Cluster & SLURM Batch Transfers)](#6-transferring-files-with-rsync-local--cluster--slurm-batch-transfers) |
+| 7 | [SSH Setup & Passwordless Login (Linux, macOS, Windows)](#7-ssh-setup--passwordless-login-linux-macos-windows) |
 
 ---
 ## 1. Important SLURM Arguments Explained
@@ -435,7 +436,181 @@ Because SLURM applies resource directives (`--cpus-per-task`, `--mem`, `--gres=g
 
 ---
 
-## 4. Commands & Monitoring Reference
+## 4. Job Dependencies — Running Successive & Chained Jobs (Pipelines)
+
+In scientific workflows, tasks rarely happen in isolation. Often your analysis requires multiple consecutive stages:
+1. **Stage 1 (Data Preprocessing / Ingestion):** CPU-heavy, needs modest RAM (e.g. 4 CPUs, 16 GB RAM).
+2. **Stage 2 (Model Training / Simulation):** GPU-intensive, needs a high-end GPU and substantial RAM (e.g. 1 GPU, 8 CPUs, 64 GB RAM on `thor`).
+3. **Stage 3 (Evaluation, Plotting, & Archiving):** Lightweight post-processing, needs minimal resources (e.g. 2 CPUs, 8 GB RAM).
+
+> [!WARNING]
+> **Why you shouldn't bundle everything into a single `.slurm` script:**  
+> If you combine all 3 stages into one script and request a GPU (`--gres=gpu_mem:...`), the cluster reserves and locks that GPU for the **entire duration** of the job — including during Stage 1 and Stage 3 when your code isn't even touching the GPU! This unnecessarily hogs limited GPU hardware on `thor` or `tramuntana-n1`, wastes your quota/priority, and prevents other researchers from running their GPU workloads.
+
+The solution is **Job Dependencies** using SLURM's `--dependency` (or `-d`) flag. This allows you to submit separate `.slurm` scripts for each stage, instructing SLURM to hold each successive job in the queue and start it automatically only after the prerequisite job finishes.
+
+---
+
+### The Core Dependency Syntax
+
+```bash
+sbatch --dependency=<type>:<job_id> next_step.slurm
+```
+
+You can specify different dependency conditions depending on how you want SLURM to react if an earlier step succeeds or fails:
+
+| Dependency Type | Behavior | Best Used For |
+|---|---|---|
+| `afterok:<job_id>` | Runs **only if** `<job_id>` finishes successfully (exit code `0`). | **Standard pipelines.** Step 2 runs only if Step 1 succeeds without error. |
+| `afterany:<job_id>` | Runs after `<job_id>` finishes, **regardless of exit status** (success or failure). | **Cleanup & notifications.** Archiving logs, temporary scratch cleanup, or sending alerts. |
+| `afternotok:<job_id>`| Runs **only if** `<job_id>` fails or crashes (non-zero exit code). | **Error handling & diagnostics.** Dumping diagnostic logs or sending failure alerts. |
+| `after:<job_id>` | Runs after `<job_id>` has begun execution (or finished). | Overlapping staggered jobs or warm starts. |
+| `aftercorr:<job_id>`| For **Job Arrays**: Array task $N$ of Job 2 runs only after array task $N$ of Job 1 finishes successfully. | 1-to-1 paired processing pipelines (e.g. per-sample preprocessing &rarr; per-sample training). |
+
+---
+
+### How to Submit Successive Jobs
+
+#### Method A: Automated Pipeline via a Bash Script (Recommended)
+
+Instead of manually waiting for a job ID and typing commands into your terminal, create an automated submission script (e.g., `run_pipeline.sh`) on the login node. 
+
+By adding the `--parsable` flag to `sbatch`, SLURM returns **only the numeric Job ID** (e.g., `12345`) instead of the full `"Submitted batch job 12345"` text, making it trivial to store in bash variables:
+
+```bash
+#!/bin/bash
+# ==============================================================================
+# run_pipeline.sh - Automated 3-Stage Pipeline on Tramuntana
+# ==============================================================================
+
+echo "Submitting multi-stage pipeline..."
+
+# Stage 1: CPU Preprocessing (runs on CPU partition)
+JOB1=$(sbatch --parsable step1_preprocess.slurm)
+echo "✅ Stage 1 (Preprocessing) submitted: Job ID $JOB1"
+
+# Stage 2: GPU Training (runs on GPU partition, only if Stage 1 succeeds)
+JOB2=$(sbatch --parsable --dependency=afterok:$JOB1 step2_train.slurm)
+echo "✅ Stage 2 (Training) submitted: Job ID $JOB2 (waiting on $JOB1)"
+
+# Stage 3: CPU Evaluation & Plots (runs only if Stage 2 succeeds)
+JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 step3_evaluate.slurm)
+echo "✅ Stage 3 (Evaluation) submitted: Job ID $JOB3 (waiting on $JOB2)"
+
+# Stage 4: Scratch Cleanup (runs whether training succeeded or failed)
+JOB4=$(sbatch --parsable --dependency=afterany:$JOB2 step4_cleanup.slurm)
+echo "✅ Stage 4 (Cleanup) submitted: Job ID $JOB4 (runs after $JOB2 completes)"
+
+echo ""
+echo "Pipeline submitted successfully! Track progress with: squeue -u \$USER"
+```
+
+To launch the entire pipeline with one command:
+```bash
+bash run_pipeline.sh
+```
+
+---
+
+#### Method B: Manual Chaining in the Terminal
+
+If you already submitted a long-running job and decide you want another job to run immediately when it finishes:
+
+1. Check your running job's ID:
+   ```bash
+   squeue -u $USER
+   # Suppose your running job ID is 10521
+   ```
+2. Submit your next job with `--dependency=afterok:10521`:
+   ```bash
+   sbatch --dependency=afterok:10521 step2_train.slurm
+   # Output: Submitted batch job 10522
+   ```
+
+---
+
+#### Method C: Defining Dependencies Inside the `#SBATCH` Script
+
+You can also specify the dependency directly inside the header of your second `.slurm` file if you already know the ID of the parent job:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=step2_train
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu_mem:24
+#SBATCH --dependency=afterok:10521
+#SBATCH --time=12:00:00
+
+python train.py
+```
+
+> [!TIP]
+> **Dynamic is better than hardcoding:** Method A (the launcher script with `--parsable`) is strongly recommended over hardcoding IDs in your `#SBATCH` files, because you never need to manually edit file contents between runs.
+
+---
+
+### Advanced Chaining Patterns
+
+#### 1. Waiting on Multiple Jobs (AND Logic)
+If a consolidation step requires multiple independent preprocessing jobs to all complete successfully before running:
+
+```bash
+# Separate multiple job IDs with colons (:)
+sbatch --dependency=afterok:10521:10522:10523 step2_aggregate.slurm
+```
+*Step 2 will remain pending until **all three** jobs (`10521`, `10522`, and `10523`) succeed.*
+
+#### 2. Waiting on Any Job (OR Logic)
+If a step should trigger as soon as **any one** of multiple alternative jobs finishes successfully:
+
+```bash
+# Separate conditions with a question mark (?)
+sbatch --dependency=afterok:10521?afterok:10522 step2_notify.slurm
+```
+
+#### 3. Fan-Out / Fan-In (Array &rarr; Merge Pipeline)
+A common pattern is running a single preprocessing job, fanning out into a 50-task parallel Job Array, and then running a single aggregation job once all 50 tasks finish:
+
+```bash
+#!/bin/bash
+# 1. Preprocessing (single job)
+PREP_ID=$(sbatch --parsable prep.slurm)
+
+# 2. Parallel Processing (Array of 50 tasks, starts after prep succeeds)
+ARRAY_ID=$(sbatch --parsable --dependency=afterok:$PREP_ID --array=1-50 process_array.slurm)
+
+# 3. Aggregation (single job, starts only when ALL 50 array tasks succeed)
+MERGE_ID=$(sbatch --parsable --dependency=afterok:$ARRAY_ID merge_results.slurm)
+
+echo "Submitted Fan-Out/Fan-In Pipeline: Prep=$PREP_ID -> Array=$ARRAY_ID -> Merge=$MERGE_ID"
+```
+
+---
+
+### Monitoring Successive Jobs in `squeue`
+
+When you submit chained jobs, dependent jobs immediately show up in `squeue`, but their state will be **`PD` (Pending)** and their reason will be **`(Dependency)`**:
+
+```text
+$ squeue -u $USER
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)
+             10521       cpu   step1_  atiwari  R       3:45      1 ada
+             10522       gpu   step2_  atiwari PD       0:00      1 (Dependency)
+             10523       cpu   step3_  atiwari PD       0:00      1 (Dependency)
+```
+
+* **While Job 10521 is running:** Jobs 10522 and 10523 sit safely in the queue without consuming any CPU, RAM, or GPU resources.
+* **When Job 10521 succeeds (exit code 0):** SLURM automatically transitions Job 10522 to eligible status, and it begins running as soon as GPU resources are available.
+* **What happens if Job 10521 fails?**  
+  If Job 10521 crashes or exits with a non-zero code, SLURM detects that the `afterok` condition will never be met. Job 10522's reason will switch to:
+  ```text
+  NODELIST(REASON): (DependencyNeverSatisfied)
+  ```
+  SLURM will cancel the dependent job and never run it. This prevents downstream jobs from corrupting files or wasting compute when prerequisites fail.
+
+---
+
+## 5. Commands & Monitoring Reference
 
 ### Quick Command Reference
 
@@ -537,7 +712,7 @@ Use `seff` after every job to learn whether you're requesting too much or too li
 
 ---
 
-## 5. Transferring Files with `rsync` (Local ↔ Cluster)
+## 6. Transferring Files with `rsync` (Local ↔ Cluster & SLURM Batch Transfers)
 
 `rsync` (Remote Sync) is the recommended tool for moving code, datasets, and simulation results between your local computer and Tramuntana. Unlike basic `scp`, `rsync` only copies files that have changed (diffs), provides a live progress bar, and automatically resumes interrupted transfers if your network connection drops.
 
@@ -596,7 +771,151 @@ Running `rsync` from your personal laptop or workstation terminal (connected to 
 
 ---
 
-## 6. SSH Setup & Passwordless Login (Linux, macOS, Windows)
+### Scenario 2: Transferring Large Datasets on the Cluster via SLURM (The Preferred Method)
+
+When migrating large datasets internally on the cluster—such as moving folders from compute node local drives (`/datalocal` on `thor` or `ada`, `/datafast`) to central shared storage (`/data`)—**do NOT use `cp`, `mv`, or unthrottled `rsync` directly in a terminal on the login node or compute nodes.**
+
+> [!CAUTION]
+> 🚨 **Why interactive transfers are prohibited on `/data`:**
+> 1. **Cluster-Wide Network Flooding:** The central storage server (`tramuntana-nas`) serves `/data` across the network via NFS. If a user runs unthrottled `cp` or `rsync` on multi-terabyte datasets, it completely saturates the network link and storage controller. Every other researcher running `ls`, `cd`, editing files, or submitting jobs will experience severe system latency or frozen terminal sessions (uninterruptible disk sleep).
+> 2. **Session Vulnerability:** If you run an interactive transfer in your terminal and your laptop sleeps, VPN drops, or SSH times out, the transfer is killed abruptly, leaving partially copied and fragmented data.
+>
+> **The preferred and official way is to run a SLURM batch job** that copies in the background with strict bandwidth throttling (`--bwlimit=100M`) and streams data directly to the NAS over SSH, bypassing local NFS mount bottlenecks.
+
+---
+
+#### 1. How to Calculate Transfer Time & Size `--time`
+
+The official SLURM transfer script caps bandwidth at **100 MB/s** (`--bwlimit=100M`). This ensures the NAS remains fast and responsive for all other researchers while your data moves steadily in the background.
+
+##### The Mathematical Formula:
+* Speed: $100\text{ MB/s} = 360,000\text{ MB/hour} = 360\text{ GB/hour} \approx 0.36\text{ TB/hour}$.
+* Daily throughput: $0.36\text{ TB/hour} \times 24\text{ hours} \approx 8.64\text{ TB/day}$.
+
+$$\text{Estimated Time (Hours)} = \frac{\text{Dataset Size in GB}}{360} \approx \frac{\text{Dataset Size in TB}}{0.36}$$
+
+> [!NOTE]
+> **Small Files Overhead:** If your dataset contains hundreds of thousands or millions of small files (< 1 MB each, such as raw text logs, small CSVs, or image tiles), filesystem metadata and directory traversal will reduce the effective speed. **Always add a 30%–50% safety buffer** to your calculated time when setting `#SBATCH --time`.
+
+##### Quick Reference Table:
+| Dataset Size | Bandwidth Cap | Real-World Throughput | Estimated Duration | Recommended `#SBATCH --time` |
+| :--- | :--- | :--- | :--- | :--- |
+| **250 GB** | 100 MB/s | ~360 GB/h | ~45 minutes | `--time=02:00:00` |
+| **500 GB** | 100 MB/s | ~360 GB/h | ~1.4 hours | `--time=03:00:00` |
+| **1 TB** | 100 MB/s | ~360 GB/h | ~2.8 hours | `--time=06:00:00` |
+| **5 TB** | 100 MB/s | ~360 GB/h | ~14 hours | `--time=1-00:00:00` (1 day) |
+| **10 TB** | 100 MB/s | ~360 GB/h | ~28 hours (~1.2 days) | `--time=2-00:00:00` (2 days) |
+| **25 TB** | 100 MB/s | ~360 GB/h | ~70 hours (~2.9 days) | `--time=4-00:00:00` (4 days) |
+| **55 TB** | 100 MB/s | ~360 GB/h | ~153 hours (~6.4 days) | `--time=10-00:00:00` (10 days) |
+
+---
+
+#### 2. Pre-Transfer Cleanup Checklist
+
+Before copying anything to `/data`, audit your directories and clean up:
+* 🗑️ **Delete intermediate & scratch files:** Remove temporary checkpoint files, unneeded intermediate caches, and raw logs.
+* 🗑️ **Delete regenerable outputs:** If an output can be easily recomputed with a short script, do not consume multi-terabyte central storage.
+* 🗑️ **Do NOT duplicate public datasets:** Datasets such as **ERA5, CMIP6, and CMEMS** are centrally maintained in `/data/opendata/`. Delete any personal local duplicates.
+
+---
+
+#### 3. Where to Put Your Data in `/data`
+
+* **Datasets under 500 GB:** Transfer them directly to your research group's directory:
+  `/data/<your_group>/` (e.g., `/data/POC/`, `/data/DataLab/`, etc.).
+* **Large Datasets (> 500 GB, tens of TBs):** Transfer them to the dedicated staging area:
+  `/data/tmp/$USER/your-folder/` *(This folder is already pre-created on the cluster)*.
+
+---
+
+#### 4. Step-by-Step: Setting Up and Running the Batch Copy Job
+
+##### Step 1: Copy the Template Script to Your Working Directory
+On the login node (`tramuntana`), copy the official cluster template:
+```bash
+cp /data/shared/move-to-data.sbatch .
+```
+
+##### Step 2: Edit the Script
+Open `move-to-data.sbatch` in your favorite editor (e.g., `nano move-to-data.sbatch`):
+
+```bash
+#!/bin/bash
+# ==============================================================================
+# Tramuntana: Copy a large folder into /data via SLURM Batch
+# Big copies stream over SSH straight to the NAS (tramuntana-nas), not through
+# the /data NFS mount: much faster, and does not slow down /data for others.
+# ==============================================================================
+#SBATCH --job-name=move-to-data
+#SBATCH --partition=cpu
+#SBATCH --nodelist=thor              # CHANGE: Node where your data currently sits (thor or ada)
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=4G
+#SBATCH --time=14-00:00:00           # CHANGE: Sized according to the time calculation table
+#SBATCH --dependency=singleton       # Guarantees only one copy job with this name runs at a time
+#SBATCH --output=move-to-data-%j.log
+
+# ------------------------------------------------------------------------------
+# CONFIGURE PATHS: Keep the trailing slash (/) at the end of both paths!
+# ------------------------------------------------------------------------------
+SRC=/datalocal/your-folder/
+DST=/data/tmp/$USER/your-folder/
+
+# ------------------------------------------------------------------------------
+# EXECUTE RSYNC:
+# --no-g --chmod=Dg+s : Sets group ownership to destination group for quotas
+# --partial           : Resumes interrupted transfers from where they left off
+# --mkpath            : Automatically creates parent directories at destination
+# --stats             : Outputs total transfer size and speed in the log
+# --bwlimit=100M      : Caps bandwidth to 100 MB/s to prevent NFS saturation
+# -e ssh              : Streams directly over SSH to the NAS (tramuntana-nas)
+# ------------------------------------------------------------------------------
+rsync -a --no-g --chmod=Dg+s --partial --mkpath --stats --bwlimit=100M -e ssh "$SRC" "tramuntana-nas:$DST"
+```
+
+> [!IMPORTANT]
+> **Key Directives Explained:**
+> * **`--nodelist=thor` vs `--nodelist=ada`:** Set this to the node where the source data physically resides. If your data is on `ada`, change this to `--nodelist=ada`.
+> * **`--dependency=singleton`:** If you submit multiple migration jobs with the same name (`#SBATCH --job-name=move-to-data`), SLURM will automatically queue them sequentially and run only **one job at a time**, preventing multiple copies from competing for the same disk I/O.
+> * **The Trailing Slash (`/`):** Both `SRC` and `DST` must end with `/`. Leaving off the slash will cause `rsync` to nest folders unintentionally (e.g. `your-folder/your-folder/`).
+
+##### Step 3: Submit the Job
+```bash
+sbatch move-to-data.sbatch
+# Output: Submitted batch job 14210
+```
+
+##### Step 4: Monitor the Transfer Progress
+You can check if the job is running with:
+```bash
+squeue -u $USER
+```
+To view the live transfer log and speed:
+```bash
+tail -f move-to-data-*.log
+```
+*(Press `Ctrl+C` to exit the log view).*
+
+##### Step 5: Verify Transfer Completeness (Idempotency)
+When the job finishes, verify that everything transferred correctly:
+1. **Re-submit the exact same script:**
+   ```bash
+   sbatch move-to-data.sbatch
+   ```
+   Because `rsync` only copies modified or missing files, it will perform a fast scan. If it reports that **0 files** were copied, your data is 100% synchronized!
+2. **Optional Dry-Run Checksum Verification:**
+   To perform an in-depth checksum comparison between source and destination without modifying files:
+   ```bash
+   rsync -a -n --checksum -i -e ssh "$SRC" "tramuntana-nas:$DST"
+   ```
+
+> [!WARNING]
+> **Reminder on Cluster Backups:**  
+> Personal code, scripts, git repos, and configuration files stored in `/home` are backed up nightly. The bulk shared storage `/data` (including `/data/tmp/`) does **not** currently have automated off-site backups. Always ensure critical scripts and project repositories are stored in `/home` or pushed to remote Git repositories (GitHub/GitLab).
+
+---
+
+## 7. SSH Setup & Passwordless Login (Linux, macOS, Windows)
 
 Connecting to Tramuntana using `ssh username@10.33.0.143` and typing your password every time works, but it quickly becomes repetitive. By setting up an **SSH host alias** in your config file and configuring **SSH keys**, you can log in, run interactive jobs, and execute file transfers with `rsync` instantly—without typing passwords or remembering IP addresses ever again.
 
@@ -712,7 +1031,7 @@ rsync -avzP tramuntana:~/my_project/results/ ./local_results/
 
 > [!TIP]
 > **Understanding `rsync` in depth:**
-> For a full breakdown of how `rsync` works, the `-avzP` flags, the critical trailing slash rule (`dir/` vs `dir`), and bidirectional upload/download workflows, see [**Section 5: Transferring Files with `rsync` (Local ↔ Cluster)**](#5-transferring-files-with-rsync-local--cluster).
+> For a full breakdown of how `rsync` works, the `-avzP` flags, the critical trailing slash rule (`dir/` vs `dir`), bidirectional upload/download workflows, and SLURM batch migrations, see [**Section 6: Transferring Files with `rsync` (Local ↔ Cluster & SLURM Batch Transfers)**](#6-transferring-files-with-rsync-local--cluster--slurm-batch-transfers).
 
 
 
