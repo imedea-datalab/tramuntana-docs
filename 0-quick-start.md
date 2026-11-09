@@ -2,7 +2,7 @@
 
 **Just looking for the commands? You're in the right place.**  
 This guide contains the absolute essentials. For more detailed topics, check out:
-- [**Commands In-Depth**](0b-commands-in-depth.md): Advanced SLURM arguments, Job Arrays, and GPU monitoring.
+- [**Commands In-Depth**](0b-commands-in-depth.md): Advanced SLURM arguments, Job Arrays, Successive Jobs (Pipelines), and GPU monitoring.
 - [**Software & Environments**](environments-and-software.md): Setting up Python (`uv`, Conda) and R.
 - [**Part 1: Under the Hood**](1-under-the-hood.md): A deeper explanation of *why* things work and how the cluster is architected.
 
@@ -130,7 +130,8 @@ sbatch my_job.slurm
 > **Please read these documents**
 > Once you have submitted a job and it is running, it is a good idea to read these documents to understand how to view information about your job:
 > - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) 
-> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#4-commands--monitoring-reference)
+> - [**Running Successive Jobs / Pipelines (`--dependency`)**](0b-commands-in-depth.md#4-job-dependencies--running-successive--chained-jobs-pipelines)
+> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#5-commands--monitoring-reference)
 
 ---
 
@@ -225,7 +226,8 @@ ssh thor    # or whatever node was assigned
 > **Please read these documents**
 > Once you have submitted a job and it is running, it is a good idea to read these documents to understand how to view information about your job:
 > - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) 
-> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#4-commands--monitoring-reference)
+> - [**Running Successive Jobs / Pipelines (`--dependency`)**](0b-commands-in-depth.md#4-job-dependencies--running-successive--chained-jobs-pipelines)
+> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#5-commands--monitoring-reference)
 
 ---
 
@@ -317,7 +319,8 @@ Because of this, you can use `srun` multiple times within a single `.slurm` file
 > **Please read these documents**
 > Once you have submitted a job and it is running, it is a good idea to read these documents to understand how to view information about your job:
 > - [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) 
-> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#4-commands--monitoring-reference)
+> - [**Running Successive Jobs / Pipelines (`--dependency`)**](0b-commands-in-depth.md#4-job-dependencies--running-successive--chained-jobs-pipelines)
+> - Especially [**Commands & Monitoring Reference**](0b-commands-in-depth.md#5-commands--monitoring-reference)
 
 ---
 

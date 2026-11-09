@@ -122,6 +122,10 @@ By following this pattern:
 2. Network traffic is kept to near zero.
 3. The local scratch drive remains clean and available for everyone.
 
+> [!TIP]
+> **Need to migrate or transfer multi-terabyte datasets into `/data`?**  
+> Never use interactive `cp` or unthrottled `rsync` from your terminal to copy large amounts of data to `/data`, as this floods the storage server and causes cluster-wide freezes. Always use a dedicated background SLURM transfer job with rate-limiting (`move-to-data.sbatch`). See the full [Large Data Migration Guide in Commands In-Depth](0b-commands-in-depth.md#scenario-2-transferring-large-datasets-on-the-cluster-via-slurm-the-preferred-method).
+
 ---
 
 ## Recap: What You've Learned
