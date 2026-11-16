@@ -30,40 +30,43 @@ This command displays an updated status report of your group's **Used Space**, *
 To regain write access once locked, you must either delete or archive enough files to drop back below the soft limit, or contact the system administrator to request a quota extension.
 
 But these folders (`/data` and `/home`) aren't really on the login node or compute nodes. They actually live on **completely different nodes** — the storage servers we met in [Part 1](1-under-the-hood.md):
-* `/home` lives on **`migjorn`** (connected via an ultra-fast 50 GbE network).
-* `/data` lives on **`tramuntana-nas`** (connected via a 10 GbE network).
+* `/home` lives on **`migjorn`** (NVMe RAID5, connected via 2 × 25 Gbps bonded = 50 Gbps shared cluster link).
+* `/data` lives on **`tramuntana-nas`** (spinning HDD RAID6, connected via 2 × 10 Gbps bonded = 20 Gbps shared cluster link; each compute node connects via a 10 Gbps port).
 
-When you open `/data` or `/home` on your compute node, you are looking directly at drives on those remote servers across physical network cables. Data is streamed in real time.
+When you open `/data` or `/home` on your compute node, you are looking directly at drives on those remote servers across physical network cables (mounted via NFS). Data is streamed in real time.
 
 ---
 
-## 2. The Cable Problem & The Network Traffic Jam
+## 2. The Cable & Disk Problem: Why Heavy `/data` I/O Causes Traffic Jams
 
 Now you know that your files live on storage servers, but your computations happen on compute nodes (like `ada` or `thor`). 
 
-This brings us to a crucial point: **Every time a compute node reads or writes a file in `/home` or `/data`, that data has to physically travel through a network cable.**
+This brings us to two crucial points:
+1. **Every time a compute node reads or writes a file in `/home` or `/data`, that request travels over the network (NFS) to the storage server.**
+2. **A transfer is only as fast as its slowest link.** For `/data` (`tramuntana-nas`), the slowest link is not the 10 Gbps cable—it is the **spinning HDD RAID6 array**, which sustains roughly **100–150 MB/s total writes shared across all users**.
 
-Think of the network cable as a **highway**:
+Think of `/data` and its NFS worker threads as a **shared highway and counter**:
 * If your program reads a file once, does heavy math for an hour, and writes one small result file, this is totally fine—it puts just a couple of cars on the highway.
 * But what if your program reads dozens of huge files and writes a massive combined file (e.g. running `cdo mergetime` across 50 multi-GB NetCDF files), or writes thousands of files constantly? 
 
-This is called an **I/O heavy task** (Input/Output heavy). When an I/O-heavy program runs directly over `/data`, it acts like hundreds of semi-trucks flooding the highway at once. 
+This is called an **I/O-heavy task** (Input/Output heavy). When an I/O-heavy program runs directly over `/data`, it floods the spinning disks and NFS queues faster than the mechanical drives can write the data.
 
-**The result? A complete traffic jam:**
-1. **Your job slows down significantly**, because the network queue is flooded.
-2. **The entire compute node freezes for all other users**: When another researcher runs `ls`, `cd`, uses tab-autocomplete, or tries to log in, their command gets stuck waiting in the traffic jam (entering uninterruptible sleep, or "D state").
+**The result? A severe bottleneck:**
+1. **Your job slows down significantly**, waiting on the shared mechanical disks.
+2. **Other `/data` operations slow down or stall**: When another researcher runs `ls` or reads files inside `/data`, their requests have to contend with the heavy disk load.
 
 ---
 
 ## 3. Storage Performance: How the Options Compare
 
-We ran empirical benchmarks on `ada` to measure the real write throughput of each option:
+We ran empirical benchmarks on the cluster under normal load to measure the real write throughput and bottlenecks of each option:
 
-| Storage Location | Physical Location | Measured Write Speed | Time to Write 100 GB | Key Consideration |
-| :--- | :--- | :--- | :--- | :--- |
-| **`/data`** | Remote (`tramuntana-nas`) | **~100 – 150 MB/s (0.1 GB/s)** *(0 MB/s during jams)* | **~12 – 16 minutes** | Huge space (200 TB pool), but slowest. Heavy I/O causes cluster-wide freezes. |
-| **`/home`** | Remote (`migjorn`) | **~600 MB/s (0.6 GB/s)** | **~2 minutes 45 seconds** | **6x faster** than `/data` (uses 50 GbE & NVMe). Great for scripts and medium datasets. *(200 GB quota, expandable on demand)*. |
-| **Local Scratch (`/scratch`)** | Physically inside compute node | **~1,000 MB/s (1.0 GB/s)** | **~1 minute 40 seconds** | **10x faster** than `/data`! Zero network traffic. Temporary only—**must be cleaned up after jobs**. |
+| Storage Location | Physical Location & Slowest Link | Measured Write Speed | Time for 100 GB | Time for 1 TB | Key Consideration |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Local Scratch (`/scratch`)** | Physically inside compute node (`ada` 7 TB NVMe). *Bottleneck: local NVMe drive.* | **~890 MB/s** | **~2 min** | **~19 min** | **Fastest option!** Zero network traffic and no encryption. Temporary only—**must be cleaned up after jobs**. |
+| **`/home`** | Remote (`migjorn`, NVMe RAID5 over NFS). *Bottleneck: single-stream NFS round trips + RAID5 parity.* | `cp`/`dd`: **420–600 MB/s**<br>`rsync`: **~180 MB/s** | **3–4 min** (`cp`) | **30–40 min** (`cp`) | **4–5x faster** than `/data`. Great for scripts, environments, and medium datasets. *(200 GB quota, expandable on demand)*. |
+| **`/data`** | Remote (`tramuntana-nas`, HDD RAID6 over NFS). *Bottleneck: spinning HDD array shared by all users.* | Sustained: **~100–150 MB/s**<br>`rsync --bwlimit=100M`: **~77 MB/s** | **11–17 min** | **2–3 hours** | Huge space (182 TB pool), but slowest. Never run heavy intermediate I/O directly on `/data`. |
+| **Office Desktop → Cluster** | Desktop 1 Gbps NIC → campus switch → login node. *Bottleneck: 1 Gbps campus link.* | **~110 MB/s** | **~15 min** | **~2.5 hours** | Naturally capped by the 1 Gbps port (safe for `/data` without `--bwlimit`). |
 
 ---
 
@@ -71,18 +74,19 @@ We ran empirical benchmarks on `ada` to measure the real write throughput of eac
 
 To keep your computations fast and the cluster smooth for everyone, follow this decision tree:
 
-### Option A: Light Reading or Small Outputs $\rightarrow$ Use `/data`
-* **When to use:** Your job reads files a few times and produces modest output files.
+### Option A: Light Reading or Small Outputs (< 10 GB) $\rightarrow$ Use `/data`
+* **When to use:** Your job reads files a few times and produces modest output files (< 10 GB).
 * **Why:** You don't need to copy files back and forth; the shared network path handles normal, non-intensive reads smoothly.
+* **Tip:** Moving files *within* `/data` (e.g. `mv /data/tmp/$USER/x /data/<group>/x`) is **instant** (0 MB/s disk copy) because Linux only updates the folder pointer. However, `mv` *across different mounts* (like `/scratch` → `/data`) is actually an unthrottled copy + delete!
 
 ### Option B: Medium Datasets with Frequent I/O $\rightarrow$ Use `/home`
 * **When to use:** Your code writes checkpoints, reads/writes repeatedly, and fits within your quota.
-* **Why:** `/home` writes at **600 MB/s** (6x faster than `/data`).
+* **Why:** `/home` writes at **420–600 MB/s** with `cp` (4–5x faster than `/data`).
 * **Note:** If your project needs more than the default 200 GB, contact the administrators for an on-demand quota extension.
 
-### Option C: Heavy Merging, Big I/O, or 10+ Files $\rightarrow$ Use Local Scratch (`/scratch`)
-* **When to use:** Heavy operations like `cdo mergetime`, unpacking large archives, training loops writing frequent raw shards, or processing datasets over 10 GB.
-* **Why:** `ada` has **7 TB of ultra-fast local NVMe storage** (`/scratch`). It writes at **1.0 GB/s**, sits directly on the internal hardware bus, and uses **0% network bandwidth**—preventing any cluster freezes.
+### Option C: Heavy Merging, Big I/O (> 10 GB), or Many Files $\rightarrow$ Use Local Scratch (`/scratch`)
+* **When to use:** Heavy operations like `cdo mergetime`, unpacking large archives, simulation working directories, training loops writing frequent shards, or processing datasets over 10 GB.
+* **Why:** `ada` has **7 TB of ultra-fast local NVMe storage** (`/scratch`). It writes at **~890 MB/s**, sits directly inside the machine, and uses **0% network bandwidth**.
 
 ---
 
@@ -99,6 +103,7 @@ Here is how to structure an I/O-heavy job (like a large `cdo` merge) safely:
 ```bash
 #!/bin/bash
 #SBATCH --job-name=fast_merge
+#SBATCH --nodelist=ada
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 
@@ -106,33 +111,32 @@ Here is how to structure an I/O-heavy job (like a large `cdo` merge) safely:
 SCRATCH_DIR=/scratch/$USER/job_${SLURM_JOB_ID}
 mkdir -p "$SCRATCH_DIR"
 
-# 2. Run your heavy processing with output going to the LOCAL drive
-# (Example: merging files from /data and saving output locally at 1.0 GB/s)
+# 2. Run your heavy processing with output going to the LOCAL drive (~890 MB/s)
 cdo -O mergetime /data/opendata/CMIP6/.../*.nc "$SCRATCH_DIR/merged_output.nc"
 
-# 3. Transfer ONLY the final result file back to shared storage
-cp "$SCRATCH_DIR/merged_output.nc" /data/my-group/results/
+# 3. Transfer ONLY the final result file back to /data (throttled to leave NAS headroom)
+rsync -a --partial --bwlimit=100M "$SCRATCH_DIR/merged_output.nc" /data/my-group/results/
 
 # 4. MANDATORY CLEANUP: Remove the temporary scratch folder
 rm -rf "$SCRATCH_DIR"
 ```
 
 By following this pattern:
-1. Your merge finishes **10 times faster**.
-2. Network traffic is kept to near zero.
+1. Your heavy I/O finishes **6–9 times faster** on local NVMe.
+2. Intermediate network traffic to `/data` is kept to zero, and the final copy back is safely throttled (`--bwlimit=100M`).
 3. The local scratch drive remains clean and available for everyone.
 
 > [!TIP]
 > **Need to migrate or transfer multi-terabyte datasets into `/data`?**  
-> Never use interactive `cp` or unthrottled `rsync` from your terminal to copy large amounts of data to `/data`, as this floods the storage server and causes cluster-wide freezes. Always use a dedicated background SLURM transfer job with rate-limiting (`move-to-data.sbatch`). See the full [Large Data Migration Guide in Commands In-Depth](0b-commands-in-depth.md#scenario-2-transferring-large-datasets-on-the-cluster-via-slurm-the-preferred-method).
+> Never use interactive `cp` or unthrottled `rsync` from your terminal to copy large amounts of data to `/data`, as this floods the storage server. Always use a dedicated background SLURM transfer job with rate-limiting (`/data/shared/move-to-data.sbatch`). See the full [Large Data Migration Guide in Commands In-Depth](0b-commands-in-depth.md#scenario-2-transferring-large-datasets-on-the-cluster-via-slurm-the-preferred-method).
 
 ---
 
 ## Recap: What You've Learned
 
 1. **Your files aren't on the compute node by default.** `/home` and `/data` live on dedicated storage servers (`migjorn` and `tramuntana-nas`).
-2. **The Cable Problem:** Streaming heavy read/write tasks over `/data` jams the network and freezes interactive access on the compute node.
-3. **Speed Hierarchy:** Local `/scratch` (~1.0 GB/s) > `/home` (~0.6 GB/s) > `/data` (~0.1 GB/s).
+2. **The Bottleneck:** `/data` runs on a shared spinning HDD RAID6 array (~100–150 MB/s sustained writes total across all users). Streaming heavy intermediate read/write tasks directly on `/data` saturates the disks.
+3. **Speed Hierarchy:** Local `/scratch` (~890 MB/s) > `/home` (420–600 MB/s with `cp`) > `/data` (~100–150 MB/s).
 4. **Quotas on Demand:** Both `/data` and `/home` quotas can be extended whenever your research requires it.
 5. **Clean Up Scratch:** Always remove your temporary `/scratch` folders after copying the final results back to shared storage.
 

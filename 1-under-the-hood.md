@@ -136,10 +136,10 @@ The seven nodes above are the **compute nodes** — the ones that actually crunc
 | Node | Role | Key Specs | What It Does |
 |------|------|-----------|-------------|
 | **tramuntana** | 🚪 Login Node | 24 cores, 128GB RAM | This is the **front door** of the cluster. When you connect via SSH, you land here. It's also the SLURM controller — the brain that decides which compute node runs your job. **You should never run computations here** — it's only for logging in, writing scripts, and submitting jobs. |
-| **migjorn** | 💾 Fast Storage | 47TB (RAID5) | This is where your **home directory** (`/home/username/`) lives. It's fast storage optimized for your scripts, code, conda environments, and small datasets. Each user gets a 200GB quota. |
-| **tramuntana-nas** | 🗄️ Bulk Storage | 32 cores, 192GB RAM, 200TB (RAID6) | This is the **big warehouse** for shared data (`/data/`). Research groups store their large datasets here. Each group gets a shared default starting storage quota (typically 15TB soft / 20TB hard limit; check anytime with `check_quota`). It has 32 CPU cores, but those are just for managing the storage system — not for your computations. |
+| **migjorn** | 💾 Fast Storage | 47TB NVMe (RAID5), 2×25 Gbps bond | This is where your **home directory** (`/home/username/`) lives. It's fast NVMe storage optimized for your scripts, code, conda environments, and small-to-medium datasets. Each user gets a 200GB default quota. |
+| **tramuntana-nas** | 🗄️ Bulk Storage | 24 cores, 125 GiB RAM, 182TB HDD (RAID6), 2×10 Gbps bond | This is the **big warehouse** for shared data (`/data/`). Research groups store their large datasets here. Each group gets a shared default starting storage quota (typically 15TB soft / 20TB hard limit; check anytime with `check_quota`). Its CPUs are strictly for managing the storage system — normal users cannot SSH into storage servers or run computations on them. |
 
-So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **4 compute nodes** (where your jobs run) + **2 storage servers** (where your files live). All connected through a fast 10 Gbps network.
+So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **7 compute nodes** (where your jobs run, each with a 10 Gbps cluster link) + **2 storage servers** (where your files live).
 
 So remember: **different nodes are good at different things, and you'll want to pick the right one for your task**.
 
@@ -157,7 +157,7 @@ Let's quickly recap what we covered in this part:
 
 4. **Cluster nodes are much simpler.** Since nobody sits in front of them, they don't need screens, keyboards, Wi-Fi, etc. From your perspective, each node is basically just **compute (CPU/GPU) + memory (RAM + storage)**.
 
-5. **Not all nodes are the same.** Some have more CPUs, some have more memory, some have GPUs, and some have extra storage. The Tramuntana cluster has 4 nodes, each specialized for different types of work.
+5. **Not all nodes are the same.** Some have more CPUs, some have more memory, some have GPUs, and some have extra storage. The Tramuntana cluster has 7 compute nodes, each specialized for different types of work.
 
 ---
 

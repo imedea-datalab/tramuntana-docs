@@ -773,14 +773,24 @@ Running `rsync` from your personal laptop or workstation terminal (connected to 
 
 ### Scenario 2: Transferring Large Datasets on the Cluster via SLURM (The Preferred Method)
 
-When migrating large datasets internally on the cluster—such as moving folders from compute node local drives (`/datalocal` on `thor` or `ada`, `/datafast`) to central shared storage (`/data`)—**do NOT use `cp`, `mv`, or unthrottled `rsync` directly in a terminal on the login node or compute nodes.**
+When migrating large datasets internally on the cluster—such as moving folders from compute node local drives (`/scratch`, `/datalocal` on `thor` or `ada`) or external machines (`datalab:`) to central shared storage (`/data`)—**do NOT use unthrottled `cp`, cross-mount `mv`, or unthrottled `rsync` directly in a terminal on the login node or compute nodes.**
 
 > [!CAUTION]
-> 🚨 **Why interactive transfers are prohibited on `/data`:**
-> 1. **Cluster-Wide Network Flooding:** The central storage server (`tramuntana-nas`) serves `/data` across the network via NFS. If a user runs unthrottled `cp` or `rsync` on multi-terabyte datasets, it completely saturates the network link and storage controller. Every other researcher running `ls`, `cd`, editing files, or submitting jobs will experience severe system latency or frozen terminal sessions (uninterruptible disk sleep).
+> 🚨 **Why interactive unthrottled transfers are prohibited on `/data`:**
+> 1. **Cluster-Wide Storage Bottleneck:** The central storage server (`tramuntana-nas`) serves `/data` across the network via NFS backed by a spinning HDD RAID6 array (~100–150 MB/s total sustained writes shared across all users). If a user runs unthrottled `cp` or `rsync` on multi-terabyte datasets, it saturates the NAS disks and NFS worker threads, slowing down `/data` for everyone else.
 > 2. **Session Vulnerability:** If you run an interactive transfer in your terminal and your laptop sleeps, VPN drops, or SSH times out, the transfer is killed abruptly, leaving partially copied and fragmented data.
 >
-> **The preferred and official way is to run a SLURM batch job** that copies in the background with strict bandwidth throttling (`--bwlimit=100M`) and streams data directly to the NAS over SSH, bypassing local NFS mount bottlenecks.
+> **The preferred and official way is to run a SLURM batch job** (`move-to-data.sbatch`) that copies to `/data` in the background with a bandwidth cap (`--bwlimit=100M`), leaving NAS disk and slot headroom for everyone else.
+
+#### Good Practices Cheat Sheet (Which Tool & Limit for Which Size)
+
+| Dataset Size / Situation | Recommended Tool & Full Command | Limit & Reasoning |
+| :--- | :--- | :--- |
+| **Small files (< 10 GB)** to `/home` or `/data` | `cp -r /path/to/folder /data/<group>/$USER/` | Quick (~1 min max on `/data`), simple, low impact. For `/home` (NVMe), `cp` is fastest (~420–600 MB/s). |
+| **Moving inside the *same* filesystem** (e.g. `/data/tmp/$USER/x` → `/data/<group>/x`) | `mv /data/tmp/$USER/x /data/<group>/x` | **Instant (0 MB/s network/disk copy)**—Linux only updates the folder pointer. *(Warning: `mv` across different mounts like `/scratch` → `/data` is actually an unthrottled `cp` + delete!)* |
+| **Large transfers (> 10–50 GB, multi-TB, or thousands of files) into `/data`** | Copy `/data/shared/move-to-data.sbatch` and run via `sbatch`, which executes:<br>`rsync -a --no-g --chmod=Dg+s --partial --mkpath --stats --bwlimit=100M "$SRC" "$DST"` | **Capped at `--bwlimit=100M` (100 MB/s).** Why: `/data` HDDs sustain ~100–150 MB/s total; `rsync` resumes on disconnect (`--partial`), applies group quotas (`--no-g --chmod=Dg+s`), and leaves ~30–50 MB/s disk headroom for everyone else. |
+| **Heavy I/O jobs (> 10 GB, `cdo mergetime`, unpacking, checkpoints)** | Work inside `/scratch/$USER/job_${SLURM_JOB_ID}/`, then copy only final results back:<br>`rsync -a --partial --bwlimit=100M /scratch/$USER/job_${SLURM_JOB_ID}/final/ /data/<group>/$USER/` | `/scratch` runs at **~890 MB/s** with zero network traffic. Never run heavy intermediate I/O directly on `/data`. |
+| **From your office desktop** | `rsync -avP /local/folder/ tramuntana:/data/<group>/$USER/folder/` | Capped naturally at **~110 MB/s** by the 1 Gbps campus LAN (already safe for `/data`, no `--bwlimit` needed from desktop). |
 
 ---
 
@@ -841,36 +851,30 @@ Open `move-to-data.sbatch` in your favorite editor (e.g., `nano move-to-data.sba
 
 ```bash
 #!/bin/bash
-# ==============================================================================
-# Tramuntana: Copy a large folder into /data via SLURM Batch
-# Big copies stream over SSH straight to the NAS (tramuntana-nas), not through
-# the /data NFS mount: much faster, and does not slow down /data for others.
-# ==============================================================================
+# Tramuntana: copy a large folder into /data.
+# Big copies go directly to /data over NFS with a bandwidth cap (--bwlimit=100M)
+# so they leave NAS disk and slot headroom for everyone else.
+# Submit with: sbatch move-to-data.sbatch
+#
 #SBATCH --job-name=move-to-data
-#SBATCH --partition=cpu
-#SBATCH --nodelist=thor              # CHANGE: Node where your data currently sits (thor or ada)
+#SBATCH --nodelist=thor              # CHANGE: the node where the data is now
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4G
-#SBATCH --time=14-00:00:00           # CHANGE: Sized according to the time calculation table
-#SBATCH --dependency=singleton       # Guarantees only one copy job with this name runs at a time
+#SBATCH --time=14-00:00:00
+#SBATCH --dependency=singleton       # only one copy with this name runs at a time
 #SBATCH --output=move-to-data-%j.log
 
-# ------------------------------------------------------------------------------
-# CONFIGURE PATHS: Keep the trailing slash (/) at the end of both paths!
-# ------------------------------------------------------------------------------
+# CHANGE: what to copy and where to. Keep the slash at the end of both paths.
 SRC=/datalocal/your-folder/
 DST=/data/tmp/$USER/your-folder/
 
-# ------------------------------------------------------------------------------
-# EXECUTE RSYNC:
-# --no-g --chmod=Dg+s : Sets group ownership to destination group for quotas
-# --partial           : Resumes interrupted transfers from where they left off
-# --mkpath            : Automatically creates parent directories at destination
-# --stats             : Outputs total transfer size and speed in the log
-# --bwlimit=100M      : Caps bandwidth to 100 MB/s to prevent NFS saturation
-# -e ssh              : Streams directly over SSH to the NAS (tramuntana-nas)
-# ------------------------------------------------------------------------------
-rsync -a --no-g --chmod=Dg+s --partial --mkpath --stats --bwlimit=100M -e ssh "$SRC" "tramuntana-nas:$DST"
+# --no-g --chmod=Dg+s: the copied files take the group of the destination
+# folder, so they count in your group's quota. Never add -S.
+# --bwlimit: leave room on the NAS for everyone else.
+rsync -a --no-g --chmod=Dg+s --partial --mkpath --stats --bwlimit=100M "$SRC" "$DST"
+
+# To check the copy afterwards (lists only what differs):
+# rsync -a -n --checksum -i "$SRC" "$DST"
 ```
 
 > [!IMPORTANT]
@@ -906,7 +910,7 @@ When the job finishes, verify that everything transferred correctly:
 2. **Optional Dry-Run Checksum Verification:**
    To perform an in-depth checksum comparison between source and destination without modifying files:
    ```bash
-   rsync -a -n --checksum -i -e ssh "$SRC" "tramuntana-nas:$DST"
+   rsync -a -n --checksum -i "$SRC" "$DST"
    ```
 
 > [!WARNING]
