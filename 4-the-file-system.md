@@ -16,6 +16,7 @@ So in `/home` you will only store your codes, scripts and small data files that 
 ### `/projects` and `/archive`
 
 * **`/projects`** is fast shared space (NVMe, 56 TB in total) for **one research project at a time**: each project gets its own folder, for example `/projects/SEALINE`, and only the project members can open it. Each project folder has a **5 TB quota** (warning at 4.5 TB); check it with `df -h /projects/<PROJECT>`. It is **backed up every night**, like `/home`. Use it for the data a project is actively working on, especially if it reads or writes a lot or has many small files.
+  * **`/projects/opendata`** is the exception: it holds public datasets that several projects use, and **every cluster user can read it** (only the Data Lab and the projects that downloaded the data can write). Look there before downloading a public dataset. For now it has the CANARI Large Ensemble (`/projects/opendata/CANARI`, with a `README.txt` that explains what each folder is and how to cite it).
 * **`/archive`** is slow, large space (hard drives, 98 TB in total) for **finished data you want to keep but rarely read**, with one folder per group. It sits on its own drives, so reading or writing there does not slow down `/data`. Like `/data`, it has **no backup**.
 
 You cannot create these folders yourself: **ask the Data Lab** for a `/projects` folder (give the project name and who needs access) or an `/archive` folder for your group.
