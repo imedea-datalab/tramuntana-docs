@@ -3,7 +3,8 @@
 **Just looking for the commands? You're in the right place.**  
 This guide contains the absolute essentials. For more detailed topics, check out:
 - [**Commands In-Depth**](0b-commands-in-depth.md): Advanced SLURM arguments, Job Arrays, Successive Jobs (Pipelines), and GPU monitoring.
-- [**Software & Environments**](environments-and-software.md): Setting up Python (`uv`, Conda) and R.
+- [**Data Transfers, Reading & Storage Best Practices**](data-transfers-and-storage.md): Uploading/downloading files, reading big vs. small datasets, and SLURM batch transfers.
+- [**Software & Environments**](environments-and-software.md): Setting up Python (`uv`, Conda), R, MATLAB, Pixi, and Apptainer.
 - [**Part 1: Under the Hood**](1-under-the-hood.md): A deeper explanation of *why* things work and how the cluster is architected.
 
 ---
@@ -147,7 +148,7 @@ salloc --cpus-per-task=4 --mem=20G --time=24:00:00 --nodelist=thor --partition=g
 
 > [!TIP]
 > **Prefer a graphical interface? You can also allocate resources via Open OnDemand!**  
-> Instead of typing long `salloc` commands and remembering flags, you can open [Open OnDemand](open-ondemand.md#⚡-interactive-compute-allocation-ssh--web-shell-without-heavy-apps) &rarr; **Interactive Apps** &rarr; **Interactive Compute Allocation (SSH)**:
+> Instead of typing long `salloc` commands and remembering flags, you can open [Open OnDemand](open-ondemand.md#-interactive-compute-allocation-ssh--web-shell-without-heavy-apps) &rarr; **Interactive Apps** &rarr; **Interactive Compute Allocation (SSH)**:
 > - Select your CPUs, RAM, GPU, node, and wall time with simple sliders and dropdowns.
 > - **Immune to Wi-Fi drops:** The reservation runs server-side on the cluster, so closing your laptop or losing network connection will **not** kill your reservation!
 > - Gives you a one-click **"Open Web Terminal"** right inside your browser, as well as an `ssh <node>` command for your local terminal or desktop VS Code Remote-SSH.
@@ -408,7 +409,7 @@ If you want to request a **specific node** (e.g., you need thor for its higher R
 | Large model / full GPU | `gpu_mem:48` (entire GPU) |
 
 > [!NOTE]
-> Each GPU has 48 GB of VRAM. The maximum you can request for a single job is `gpu_mem:48` (one full GPU).
+> GPUs on `thor` and `tramuntana-n1` have **48 GB of VRAM** (`gpu_mem:48` max for one full GPU), while `barracuda`'s GV100 has **32 GB of VRAM** (`gpu_mem:32` max).
 >
 > **Multi-GPU jobs are not currently supported.** The cluster does not yet have the configuration for jobs that span multiple GPUs with inter-GPU communication (e.g., PyTorch DDP across 2 GPUs). If your model fits in 48 GB, you're good. If there's demand for multi-GPU training in the future, this can be set up.
 
@@ -504,7 +505,7 @@ To profile an array job:
 
 > [!NOTE]
 > **MPI Profiling Output vs `#SBATCH` Parameters**
-> When profiling MPI workloads, the profiler will suggest an optimal `#SBATCH --cpus-per-task=N`. However, inside your MPI script (e.g., [`test_mpi_scaling.slurm`](file:///home/atiwari/Downloads/projects/Tramuntana-tests/scripts/slurm/c/test_mpi_scaling.slurm)), this number actually represents the **total number of processes** (MPI ranks) rather than threads per process. 
+> When profiling MPI workloads, the profiler will suggest an optimal `#SBATCH --cpus-per-task=N`. However, inside your MPI script (e.g., `test_mpi_scaling.slurm`), this number actually represents the **total number of processes** (MPI ranks) rather than threads per process. 
 > Depending on your launcher, you should map this number to the process count:
 > - For `mpirun`/`mpiexec`: `mpirun -np $SLURM_CPUS_PER_TASK ...`
 > - For `srun`: `srun -n $SLURM_CPUS_PER_TASK --cpus-per-task=1 ...` (Notice that the actual `--cpus-per-task` argument passed directly to the `srun` command is strictly `1`).
