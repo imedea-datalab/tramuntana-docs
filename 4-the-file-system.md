@@ -13,14 +13,14 @@ Each folder lives on specific hardware designed for a different kind of work:
 | Folder | Physical Server & Disks | Capacity & Default Quota | Nightly Backup? | What Belongs Here |
 | :--- | :--- | :--- | :---: | :--- |
 | **`/home/<username>`** | **`migjorn`** (NVMe SSD RAID5, `ext4`) | `47 TB` pool · **200 GB soft / 400 GB hard** per user *(expandable)* | **Yes** | Your personal code, scripts, Git repos, configs, and small files. |
-| **`/projects/<project>`** | **`migjorn`** (NVMe SSD RAID5, `xfs`) | `56 TB` pool · **4.5 TB soft / 5 TB hard** per active project *(on request)* | **Yes** | Fast shared NVMe space for active projects, multi-node/GPU datasets read repeatedly, and software environments (`.venv`, `.pixi`). |
+| **`/projects/<project>`** | **`migjorn`** (NVMe SSD RAID5, `xfs`) | `56 TB` pool · **4.5 TB soft / 5 TB hard** per active project *(on request)* | **Yes** | Fast shared NVMe space for one research project at a time (members only), datasets read repeatedly, and software environments (`.venv`, `.pixi`) — plus shared public datasets in **`/projects/opendata/`** (e.g. `CANARI`, readable by all users). |
 | **`/data/<group>`** | **`tramuntana-nas`** (Spinning HDD RAID6, `xfs`) | `182 TB` pool · **15 TB soft / 20 TB hard** per group *(expandable)* | **No** | Main shared warehouse for your research group's large datasets (plus shared public data in `/data/opendata/`). |
 | **`/archive/<group>`** | **`tramuntana-nas`** (Spinning HDD RAID6, `xfs`) | `99 TB` pool · Group/project quotas | **No** | Cold/long-term storage for completed projects and rarely accessed datasets. |
 | **`/scratch`** *(currently on **`ada`** only)* | **Local PCIe NVMe** inside `ada` *(0 network traffic)* | **7 TB** shared temporary space *(no quota — **must delete files after job!**)* | **No** | Fastest temporary workspace (`~890 MB/s` write, `1.5–3+ GB/s` read) for unpacking `.tar` archives, `cdo` merges, and heavy intermediate I/O. |
 
 > [!NOTE]
 > **Local `/scratch` Hardware Roadmap & `pampero` Note:**  
-> Today, **only `ada` has a local NVMe `/scratch` drive (`7 TB`)**. **We will be adding dedicated local NVMe `/scratch` drives to `thor`, `tramuntana-n1`, and upcoming compute nodes once funds are available to purchase the NVMe drives.** Until then, jobs on nodes without `/scratch` should use **`/projects`** (or `/dev/shm` in RAM for small datasets) or other place as described in the notes in [2-what-is-slurm.md](2-what-is-slurm.md). Note that `pampero`'s local `37 TB` `/pampero` folder uses spinning hard drives (not fast NVMe) and does not speed up `/data` or `/projects`.
+> Today, **only `ada` has a local NVMe `/scratch` drive (`7 TB`)**. **We will be adding dedicated local NVMe `/scratch` drives to `thor`, `tramuntana-n1`, and upcoming compute nodes once funds are available to purchase the NVMe drives.** Until then, jobs on nodes without `/scratch` should use **`/projects`** (or `/dev/shm` in RAM for small datasets, or packed shard formats — see [Reading & Writing Best Practices](data-transfers-and-storage.md#3-reading-data-where--how-to-read-by-file-size--frequency)). Note that `pampero`'s local `37 TB` `/pampero` folder uses spinning hard drives (not fast NVMe) and does not speed up `/data` or `/projects`.
 
 ---
 
@@ -29,8 +29,9 @@ Each folder lives on specific hardware designed for a different kind of work:
 ### Checking Your Usage
 From `tramuntana`, you can check quotas anytime:
 ```bash
-quota -s       # Check your personal /home usage and limits
-check_quota    # Check your research group's /data usage, soft/hard limits, and grace timer
+quota -s                    # Check your personal /home usage and limits
+df -h /projects/<project>   # Check a specific /projects folder's 5 TB project quota
+check_quota                 # Check your research group's /data usage, soft/hard limits, and grace timer
 ```
 
 * **Soft Limit (typically 15 TB on `/data`) vs. Hard Limit (typically 20 TB):** Crossing the Soft Limit starts a **7-day grace countdown**. If your group stays above the Soft Limit for more than 7 days, writes are locked automatically—even below the Hard Limit—until files are cleaned/archived or your quota is raised.

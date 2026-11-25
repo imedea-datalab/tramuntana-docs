@@ -90,7 +90,7 @@ Let's zoom out and see the full picture of how you actually interact with the Tr
 
 ![SLURM Cluster Architecture Diagram](images/slurm-architecture.png)
 
-That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **7 compute nodes** (where your jobs run) + **2 storage servers** (where your files live). All connected through a fast 10 Gbps network. 
+That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **7 compute nodes** (where your jobs run — `ada`, `thor`, `tramuntana-n1`, and `pampero` on the 10 Gbps cluster switch; `barracuda`, `vscode-node01`, and `vscode-node02` on the 1 Gbps office network) + **2 storage servers** (where your files live).
 
 ---
 

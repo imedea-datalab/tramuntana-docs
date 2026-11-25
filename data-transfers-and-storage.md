@@ -25,29 +25,59 @@ This guide is your operational reference for **uploading/downloading data, choos
 
 ## 1. How the Network & Storage Speeds Work
 
-### Two Networks & Active Safeguards
-Tramuntana sits across two networks:
+### How Everything Is Connected: Nested Boxes, Cables & Switches
+
+Think of the network as **boxes inside boxes**, connected by cables to **switches** *(a **switch** is simply a central multi-plug connection box that lets any machine plugged into it talk directly to any other machine plugged into that same switch)*:
 
 ```text
-[ Office Desktop (1 Gbps) ] ──┐
-                              ├──► [ tramuntana Login VM ] ──► Private Cluster Switch (192.168.0.x)
-[ Home Laptop + UIB VPN   ] ──┘    (1 Gbps campus front door;        │
-                                    35 MB/s NAS write cap)           ├──► Compute Nodes (10 Gbps each)
-                                                                     │    • ada: has 7 TB local NVMe /scratch
-                                                                     │    • thor, tramuntana-n1, barracuda,
-                                                                     │      pampero, vscode-node01/02
-                                                                     │
-                                                                     ├──► migjorn (50 Gbps shared bond)
-                                                                     │    • /projects (56 TB NVMe, xfs, backed up)
-                                                                     │    • /home     (47 TB NVMe, ext4, backed up)
-                                                                     │
-                                                                     └──► tramuntana-nas (20 Gbps shared bond)
-                                                                          • /data    (182 TB HDD RAID6, no backup)
-                                                                          • /archive ( 99 TB HDD RAID6, no backup)
+┌────────────────────────────── PUBLIC INTERNET (Outside) ──────────────────────────────┐
+│  [ Laptop at Home / Traveling ]                                                       │
+│         │                                                                             │
+│         ▼  Outside internet cable / Wi-Fi + UIB VPN (~5–25 MB/s)                      │
+│  ┌────────────────────────── UNIVERSITY (UIB) NETWORK ─────────────────────────────┐  │
+│  │      │                                                                          │  │
+│  │      ▼  University cable                                                        │  │
+│  │  ┌─────────────────── IMEDEA OFFICE NETWORK (1 Gbps cables) ─────────────────┐  │  │
+│  │  │   │                                                                       │  │  │
+│  │  │   │    [ Office Desktop ]      [ barracuda, vscode-node01, vscode-node02 ]│  │  │
+│  │  │   │     │ (1 Gbps cable)                   │ (1 Gbps cables)              │  │  │
+│  │  │   └─────┼──────────────┐    ┌──────────────┘                              │  │  │
+│  │  │         ▼              ▼    ▼                                             │  │  │
+│  │  │      ╔══════════════════════════════╗                                     │  │  │
+│  │  │      ║        OFFICE SWITCH         ║  (1 Gbps connection box: lets       │  │  │
+│  │  │      ╚══════════════╦═══════════════╝   office machines reach cluster)    │  │  │
+│  │  │                     │                                                     │  │  │
+│  │  │                     ▼  1 Gbps front-door cable (~110 MB/s shared)         │  │  │
+│  │  │  ┌──────────────── TRAMUNTANA SERVER ROOM (Cluster Box) ───────────────┐  │  │  │
+│  │  │  │                  │                                                  │  │  │  │
+│  │  │  │       [ tramuntana Login Node ]                                     │  │  │  │
+│  │  │  │                  │                                                  │  │  │  │
+│  │  │  │                  ▼                                                  │  │  │  │
+│  │  │  │     ╔═══════════════════════════════════════════════════╗           │  │  │  │
+│  │  │  │     ║         CLUSTER SWITCH (Central Connection Box)   ║           │  │  │  │
+│  │  │  │     ║   Lets any machine plugged in here talk directly  ║           │  │  │  │
+│  │  │  │     ║        to any other machine on this switch        ║           │  │  │  │
+│  │  │  │     ╚═══════╦══════════════════╦══════════════════╦═════╝           │  │  │  │
+│  │  │  │             │                  │                  │                 │  │  │  │
+│  │  │  │     10 Gbps │          50 Gbps │          20 Gbps │                 │  │  │  │
+│  │  │  │  cable each │ (two 25G cables) │ (two 10G cables) │                 │  │  │  │
+│  │  │  │             ▼                  ▼                  ▼                 │  │  │  │
+│  │  │  │  ┌────────────────────┐ ┌────────────┐ ┌───────────────────┐        │  │  │  │
+│  │  │  │  │ Main Compute Nodes │ │  migjorn   │ │  tramuntana-nas   │        │  │  │  │
+│  │  │  │  │ • ada (+7 TB local │ │ (NVMe SSD) │ │  (Spinning HDD)   │        │  │  │  │
+│  │  │  │  │   NVMe /scratch)   │ │ • /projects│ │ • /data (182 TB)  │        │  │  │  │
+│  │  │  │  │ • thor             │ │   (56 TB)  │ │ • /archive (99 TB)│        │  │  │  │
+│  │  │  │  │ • tramuntana-n1    │ │ • /home    │ │ (35 MB/s write    │        │  │  │  │
+│  │  │  │  │ • pampero          │ │   (47 TB)  │ │  cap per node)    │        │  │  │  │
+│  │  │  │  └────────────────────┘ └────────────┘ └───────────────────┘        │  │  │  │
+│  │  │  └─────────────────────────────────────────────────────────────────────┘  │  │  │
+│  │  └───────────────────────────────────────────────────────────────────────────┘  │  │
+│  └─────────────────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Three physical rules set the speed of every operation:
-1. **A transfer is only as fast as its slowest link.** One compute node can never exceed its **10 Gbps (`~1,100 MB/s`)** cable, and `migjorn`'s `50 Gbps` / `tramuntana-nas`'s `20 Gbps` links are **shared totals across all nodes**. All office/VPN uploads pass through `tramuntana`'s shared **1 Gbps (`~110 MB/s`)** campus port.
+1. **A transfer is only as fast as the slowest cable or disk on its path.** Inside the server room, `ada`, `thor`, `tramuntana-n1`, and `pampero` each plug into the **Cluster Switch** with a **10 Gbps cable (`~1,100 MB/s`)**, talking directly to `migjorn` (**two 25 Gbps cables = `50 Gbps` total** shared across all nodes) and `tramuntana-nas` (**two 10 Gbps cables = `20 Gbps` total** shared across all nodes). Outside the server room, office desktops, `barracuda`, and `vscode-node01/02` use **1 Gbps office cables (`~110 MB/s`)**, and home laptops come in over the internet + UIB VPN (`~5–25 MB/s`).
 2. **Writes to `/data` and `/archive` are capped at `~32–35 MB/s` per node.** Because `tramuntana-nas` uses mechanical spinning RAID6 hard drives, every compute node (and `tramuntana`) enforces a kernel **`35 MB/s` (`280 Mbit/s`) write limit** to `tramuntana-nas` so no single job can freeze `/data` for other researchers.
 3. **Reads everywhere—and all NVMe writes (`/projects`, `/home`, `ada:/scratch`)—are completely uncapped.**
 
@@ -232,7 +262,8 @@ rsync -avP tramuntana:/data/<your_group>/$USER/results/ ./local_results/
 Never run multi-hour cluster copies or large internet downloads (`wget`/`curl`/`rclone`) directly in an interactive terminal on `tramuntana`. Submit them as a background SLURM job instead.
 
 ### 6.1 Pre-Transfer Cleanup Checklist
-* **Do NOT duplicate public datasets:** **ERA5, CMIP6, and CMEMS** are already maintained centrally in `/data/opendata/`.
+* **Do NOT duplicate public datasets:** Check **`/data/opendata/`** (**ERA5, CMIP6, CMEMS**) and **`/projects/opendata/`** (e.g. **CANARI** Large Ensemble in `/projects/opendata/CANARI`, readable by all users) before downloading public data.
+* **Check `/projects` space when needed:** Run `df -h /projects/<your_project>` to view your project folder's `5 TB` quota (`check_quota` for `/data`, `quota -s` for `/home`).
 * **Delete intermediate scratch & regenerable files** before archiving to `/data` or `/archive`.
 * **Pack tiny files first:** If a folder has `10,000+` small files, pack it into `.tar` / `.tar.zst` chunks before copying to `/data` or `/archive`.
 
