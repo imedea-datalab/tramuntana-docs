@@ -4,6 +4,7 @@ This guide covers everything you need to know about setting up Python (`uv` & Co
 
 **Other Practical Guides:**
 - [**Quick Start & Commands**](0-quick-start.md) — Connecting to the cluster and running your first job.
+- [**Data Transfers, Reading & Storage Best Practices**](data-transfers-and-storage.md) — Storage tiers (`/home`, `/projects`, `/data`, `/archive`, `/scratch`), transfer speeds, and I/O rules.
 - [**Commands In-Depth**](0b-commands-in-depth.md) — Advanced SLURM options, Job Arrays, and GPU monitoring.
 
 ---
@@ -300,15 +301,15 @@ conda clean --all
 # Check conda disk usage
 du -sh ~/.conda/
 
-# Move conda environments to /data (if needed)
-# First, create a directory in /data
-mkdir -p /data/your-username/conda-envs
+# Move large Conda environments out of /home (prefer /projects NVMe xfs, or your group's /data folder):
+mkdir -p /projects/<your_project>/$USER/conda-envs
+# (or: mkdir -p /data/<GroupName>/$USER/conda-envs)
 
 # Create environments there
-conda create --prefix /data/your-username/conda-envs/myproject python=3.11
+conda create --prefix /projects/<your_project>/$USER/conda-envs/myproject python=3.11
 
 # Activate with full path
-conda activate /data/your-username/conda-envs/myproject
+conda activate /projects/<your_project>/$USER/conda-envs/myproject
 ```
 
 ---
@@ -458,7 +459,7 @@ Package and library management is clearly divided:
 | **R Packages (CRAN)** | `ggplot2`, `dplyr`, `tidyr`, `data.table` | ✅ **Yes (Self-service)** | `install.packages("pkg")` or `pak::pkg_install("pkg")` | User local directory (`$R_LIBS_USER`) |
 | **Bioconductor Packages** | `GenomicRanges`, `DESeq2`, `Biostrings` | ✅ **Yes (Self-service)** | `BiocManager::install("pkg")` | User local directory (`$R_LIBS_USER`) |
 | **GitHub / Development Packages** | Unreleased packages, community repos | ✅ **Yes (Self-service)** | `remotes::install_github("user/repo")` | User local directory (`$R_LIBS_USER`) |
-| **Personal R Functions & Scripts** | Custom user analysis routines | ✅ **Yes (Self-service)** | Save into your project or `~/R/` directory | User home or `/data/$USER/` |
+| **Personal R Functions & Scripts** | Custom user analysis routines | ✅ **Yes (Self-service)** | Save into your project or `~/R/` directory | User `/home`, `/projects/<project>/`, or `/data/<GroupName>/$USER/` |
 | **Linux OS Libraries & C/C++ Headers** | `libgdal-dev`, `libgeos-dev`, `libproj-dev`, `libudunits2-dev`, `libnetcdf-dev`, `libhdf5-dev` | ❌ **No (Requires root inside OS image)** | **Contact Admins** (or use **Pixi** for a local R stack) | Shared container (`/data/shared/containers/r/`) |
 | **GPU / CUDA Backends** | PyTorch / TensorFlow R bindings, CUDA drivers | ❌ **No (Host driver dependency)** | **Contact Admins** | System & container level |
 
@@ -506,11 +507,11 @@ If you require specialized or bleeding-edge system libraries immediately and can
 
 ##### Step-by-Step: Setting Up Your Own R Stack with Pixi
 
-1. **Create your project folder on `/data`**:  
-   *(Always build environments on `/data` to protect your 200 GB home directory quota!)*
+1. **Create your project folder on `/projects` (recommended — fast NVMe `xfs` for thousands of package files) or `/data/<GroupName>/`**:  
+   *(Building large environments outside `/home` protects your 200 GB home quota!)*
    ```bash
-   mkdir -p /data/$USER/my_r_project
-   cd /data/$USER/my_r_project
+   mkdir -p /projects/<your_project>/$USER/my_r_project
+   cd /projects/<your_project>/$USER/my_r_project
    ```
 
 2. **Initialize Pixi**:
@@ -538,7 +539,7 @@ If you require specialized or bleeding-edge system libraries immediately and can
    *`pixi run` automatically activates your project's local environment, executes the command, and cleanly exits.*
 
 5. **Submitting SLURM Batch Jobs with Pixi**:  
-   You do not need to target specific nodes with `--nodelist`! Because `/data` is shared across all nodes and Conda-Forge packages are built for standard `x86_64` Linux CPUs, your Pixi environment runs seamlessly on any compute node:
+   You do not need to target specific nodes with `--nodelist`! Because `/projects` and `/data` are shared across all nodes and Conda-Forge packages are built for standard `x86_64` Linux CPUs, your Pixi environment runs seamlessly on any compute node:
 
    ```bash
    #!/bin/bash
@@ -550,8 +551,8 @@ If you require specialized or bleeding-edge system libraries immediately and can
    #SBATCH --mem=32G
    #SBATCH --time=04:00:00
 
-   # Navigate to your project directory on /data
-   cd /data/$USER/my_r_project
+   # Navigate to your project directory
+   cd /projects/<your_project>/$USER/my_r_project
 
    # Execute your analysis using your local Pixi R environment
    pixi run Rscript analysis.R
@@ -563,7 +564,7 @@ If you require specialized or bleeding-edge system libraries immediately and can
 | :--- | :--- | :--- |
 | **Best For** | Everyday research & interactive Open OnDemand RStudio | Niche C++ dependencies, rapid experimentation, standalone SLURM batch jobs |
 | **Open OnDemand RStudio Web** | ✅ **Yes** (Interactive web IDE) | ❌ **No** (CLI and SLURM batch scripts only) |
-| **Disk Quota Used** | **0 MB** (reads from shared image) | ~1–3 GB per project folder on `/data` |
+| **Disk Quota Used** | **0 MB** (reads from shared image) | ~1–3 GB per project folder on `/projects` or `/data/<GroupName>/` |
 | **Admin Permissions** | Requires admin to update the central image | ❌ **No root needed** (100% user-managed) |
 | **SLURM Execution** | `Rscript-4.6 analysis.R` | `pixi run Rscript analysis.R` |
 
@@ -872,8 +873,8 @@ While you saw Pixi used in our [R guide](#handling-missing-linux-system-librarie
 | :--- | :--- | :--- | :--- | :--- |
 | **`uv`** | Pure Python projects & machine learning (PyTorch, NumPy) | `.venv/` in project | ❌ No | `uv run python script.py` |
 | **`Pixi`** | C/C++ compilers, system libraries (`gdal`, `hdf5`, `ffmpeg`), multi-language stacks | `.pixi/` in project | ❌ No | `pixi run <command>` |
-| **`Apptainer`** | Commercial software (MATLAB), official Docker images, or full custom Linux OS distributions | Shared SIFs or `/data/$USER/*.sif` | ❌ No (runs container) | `matlab2025b` / `apptainer exec ...` |
-| **`Conda`** | Legacy existing environments | `~/.conda/` (or `/data/$USER/conda/`) | ❌ No | `conda activate ...` |
+| **`Apptainer`** | Commercial software (MATLAB), official Docker images, or full custom Linux OS distributions | Shared SIFs or `/data/<GroupName>/$USER/*.sif` | ❌ No (runs container) | `matlab2025b` / `apptainer exec ...` |
+| **`Conda`** | Legacy existing environments | `~/.conda/` (or `/projects/<project>/$USER/conda/`) | ❌ No | `conda activate ...` |
 
 ---
 
@@ -921,13 +922,13 @@ If your project combines a compiled C++ simulation with Python analysis scripts 
 ### Step-by-Step Guide: Using Pixi
 
 > [!IMPORTANT]
-> **Always create your Pixi project on `/data`!**  
-> Packages, compilers, and dependencies can take 1–3 GB. Storing them inside `/data/$USER/` ensures you never fill up your 200 GB `/home` directory quota.
+> **Prefer creating Pixi projects on `/projects` (fast NVMe `xfs`) or `/data/<GroupName>/$USER/`!**  
+> Compilers and dependencies contain thousands of small files (1–3 GB)—storing them on `/projects/<your_project>/$USER/` runs much faster than spinning HDDs on `/data` and protects your 200 GB `/home` quota. (Note: `/data` is organized by research group `/data/<GroupName>/$USER/`, not `/data/$USER/`.)
 
 #### Step 1: Create and Initialize Your Project Folder
 ```bash
-mkdir -p /data/$USER/my_pixi_project
-cd /data/$USER/my_pixi_project
+mkdir -p /projects/<your_project>/$USER/my_pixi_project
+cd /projects/<your_project>/$USER/my_pixi_project
 
 # Initialize a new Pixi project
 pixi init
@@ -977,7 +978,7 @@ Here is a complete workflow for compiling a modern C++ simulation with CMake and
 
 ```bash
 # 1. Setup project
-mkdir -p /data/$USER/simulation && cd /data/$USER/simulation
+mkdir -p /projects/<your_project>/$USER/simulation && cd /projects/<your_project>/$USER/simulation
 pixi init
 
 # 2. Add compilers, build tools, and HDF5 library
@@ -995,7 +996,7 @@ pixi run ./build/my_simulation
 
 ### Submitting Pixi Jobs to SLURM
 
-Because `/data` is shared across all nodes on the cluster and Conda-Forge binaries are standard `x86_64` Linux packages, your Pixi environment runs identically on any compute node.
+Because `/projects` and `/data` are shared across all nodes on the cluster and Conda-Forge binaries are standard `x86_64` Linux packages, your Pixi environment runs identically on any compute node.
 
 In your SLURM batch script, simply use `pixi run`:
 
@@ -1009,8 +1010,8 @@ In your SLURM batch script, simply use `pixi run`:
 #SBATCH --mem=32G
 #SBATCH --time=04:00:00
 
-# 1. Navigate to your project directory on /data
-cd /data/$USER/simulation
+# 1. Navigate to your project directory
+cd /projects/<your_project>/$USER/simulation
 
 # 2. Execute your program using pixi run
 pixi run ./build/my_simulation
@@ -1056,7 +1057,7 @@ However, there are a few things **none of these tools can do**. For those cases,
 Apptainer packages an **entire Linux operating system** (e.g., Ubuntu 24.04 or Rocky Linux 9), along with all your software, into a single image file (`.sif`). When you run it, your program sees the container's OS and libraries instead of the cluster's — but it still runs directly on the cluster's CPUs and GPUs with **no virtual machine overhead**.
 
 * **No root needed to run:** Containers run with your normal user permissions.
-* **Your files are available inside:** Your `/home` and `/data` directories can be accessed from inside the container.
+* **Your files are available inside:** `/home`, `/projects`, `/data`, and `/archive` can be accessed from inside the container (add `--bind /scratch` if staging files in `ada:/scratch`).
 * **GPU support:** Add the `--nv` flag and the container can use the node's NVIDIA GPUs.
 * **You already use it:** The cluster's `R-4.6` and `matlab2025b` commands are actually Apptainer containers behind small wrapper scripts!
 
@@ -1109,28 +1110,28 @@ The admins may be able to:
 
 The simplest case: convert a Docker image into a `.sif` file and run it.
 
-#### Step 1: Redirect the Apptainer Cache to `/data`
-By default, Apptainer stores downloaded layers in `~/.apptainer/cache`, which can quickly fill your `/home` quota. Redirect it to `/data` first:
+#### Step 1: Redirect the Apptainer Cache Out of `/home`
+By default, Apptainer stores downloaded layers in `~/.apptainer/cache`, which can quickly fill your `/home` quota. Redirect it to your group's `/data/<GroupName>/$USER/` folder (or `/projects/<your_project>/$USER/` during builds):
 ```bash
-mkdir -p /data/$USER/apptainer/{cache,tmp,images}
-export APPTAINER_CACHEDIR=/data/$USER/apptainer/cache
-export APPTAINER_TMPDIR=/data/$USER/apptainer/tmp
+mkdir -p /data/<GroupName>/$USER/apptainer/{cache,tmp,images}
+export APPTAINER_CACHEDIR=/data/<GroupName>/$USER/apptainer/cache
+export APPTAINER_TMPDIR=/data/<GroupName>/$USER/apptainer/tmp
 ```
-*(Add the two `export` lines to your `~/.bashrc` to make this permanent.)*
+*(Replace `<GroupName>` with your group folder, e.g. `DataLab` or `POC`, and add the two `export` lines to your `~/.bashrc` to make this permanent.)*
 
 #### Step 2: Pull the Image
 ```bash
-cd /data/$USER/apptainer/images
+cd /data/<GroupName>/$USER/apptainer/images
 apptainer pull my_tool.sif docker://lab/model:v1
 ```
 
 #### Step 3: Run Commands Inside the Container
 ```bash
 # Run a single command inside the container:
-apptainer exec --bind /data /data/$USER/apptainer/images/my_tool.sif my_command --help
+apptainer exec --bind /data /data/<GroupName>/$USER/apptainer/images/my_tool.sif my_command --help
 
 # Open an interactive shell inside the container:
-apptainer shell --bind /data /data/$USER/apptainer/images/my_tool.sif
+apptainer shell --bind /data /data/<GroupName>/$USER/apptainer/images/my_tool.sif
 ```
 
 ---
@@ -1163,7 +1164,7 @@ From: ubuntu:24.04
 
 #### Step 2: Build the Image
 ```bash
-cd /data/$USER/apptainer
+cd /data/<GroupName>/$USER/apptainer
 apptainer build --fakeroot images/my_env.sif my_env.def
 ```
 * `--fakeroot` lets you act as "root" **inside the container only** (to run `apt-get`), without any real admin rights on the cluster.
@@ -1204,9 +1205,9 @@ apptainer exec --nv --bind /data my_env.sif python train.py
 #SBATCH --time=04:00:00
 
 # Path to your container image
-SIF=/data/$USER/apptainer/images/my_env.sif
+SIF=/data/<GroupName>/$USER/apptainer/images/my_env.sif
 
-cd /data/$USER/my_project
+cd /projects/<your_project>/$USER/my_project
 
 # --nv enables GPU access (omit it for CPU-only jobs)
 apptainer exec --nv --bind /data "$SIF" ./run_analysis.sh
@@ -1223,7 +1224,7 @@ apptainer exec --nv --bind /data "$SIF" ./run_analysis.sh
 | `apptainer exec <image>.sif <command>` | Runs a single command inside the container. |
 | `apptainer shell <image>.sif` | Opens an interactive shell inside the container. |
 | `apptainer run <image>.sif` | Executes the container's default `%runscript`. |
-| `--bind /data` | Makes `/data` available inside the container. |
+| `--bind /data` *(or `--bind /scratch` on `ada`)* | Binds shared/local storage inside the container (`/projects` & `/archive` are bound by default via cluster Apptainer). |
 | `--nv` | Enables NVIDIA GPU access inside the container. |
 | `apptainer cache clean` | Deletes cached image layers to free up disk space. |
 
