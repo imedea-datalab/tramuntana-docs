@@ -36,6 +36,7 @@ check_quota                 # Check your research group's /data usage, soft/hard
 
 * **Soft Limit (typically 15 TB on `/data`) vs. Hard Limit (typically 20 TB):** Crossing the Soft Limit starts a **7-day grace countdown**. If your group stays above the Soft Limit for more than 7 days, writes are locked automatically—even below the Hard Limit—until files are cleaned/archived or your quota is raised.
 * **Quotas Are Expandable on Demand:** `/home`, `/projects`, and `/data` quotas are **not fixed ceilings**. Whenever your research needs more space or a new `/projects` folder, simply contact the cluster administrators.
+* **Getting a `/projects` or `/archive` Folder:** You cannot create these folders yourself. Ask the Data Lab: for `/projects`, give the project name and who needs access (only those people can open it); `/archive` has one folder per group.
 * **What Is Backed Up (and What Is Not):** Only **`/home` and `/projects`** are backed up nightly to the dedicated backup server (`io`). **`/data`, `/archive`, and `/scratch` have no backups**—keep source code in `/home` (and Git), and avoid dumping terabytes of disposable temporary scratch garbage into `/projects` so nightly backups stay clean.
 
 ---
