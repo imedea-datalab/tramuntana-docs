@@ -201,6 +201,7 @@ Size cutoffs for `cp` vs. `sbatch` + `rsync` are based on a **~15-minute maximum
 
 ### 4. Writing *Into* `/projects` & `ada:/scratch` (Uncapped NVMe)
 * **Omit `--bwlimit=35M` when copying *into* `/projects` or `ada:/scratch`:** NVMe runs at `~420–890 MB/s` (`cp -r` is 2–4× faster than `rsync`). For large NVMe copies **`> 200–500 GB`**, wrap `cp -r` or `rsync -a --partial` (**without** `--bwlimit`) inside an `sbatch` job so SSH disconnects don't abort it and `tramuntana` stays free.
+* **After copying into `/projects`, run `chmod -R g+rwX` on what you copied:** Each project member gets access by name, but `cp`, `rsync` and `tar` carry over the source's permissions, and the group bits cap what the other members can do. A file that was `rw-r--r--` at the source stays read-only for the rest of the project until you run it.
 * **Do NOT dump daily throwaway scratch churn onto `/projects`:** Because **`/projects` and `/home` are backed up nightly to `io`**, writing and deleting terabytes of disposable temporary files every day wastes NVMe endurance and bloats nightly backups. Use `ada:/scratch` for pure throwaway job scratch when on `ada`, and avoid dumping `100k+` tiny files into `/home` (`ext4`).
 
 ### Master Write & Transfer Cheat Sheet
