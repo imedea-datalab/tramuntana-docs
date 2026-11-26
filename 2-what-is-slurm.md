@@ -31,7 +31,7 @@ SLURM isn't just a passive dispatcher. It's also an **enforcer**. It has rules, 
 
 - **Queuing** — If all the nodes are busy, your job doesn't get rejected. It goes into a queue and waits its turn. First come, first served (mostly — some jobs get priority, more on that in a second).
 
-- **Fair sharing** — You can't hog the entire cluster. There's a limit: each user can have at most **20 jobs running at the same time**, and at most **50 jobs total** in the queue. This makes sure one person doesn't block everyone else.
+- **Fair sharing** — You can't hog the entire cluster forever. SLURM tracks resource allocations across users and partitions so jobs share the cluster fairly and one person doesn't block everyone else.
 
 - **Resource enforcement** — If you told SLURM "I need 32 GB of memory" and your program tries to use 64 GB? SLURM will **kill your job**. Same if you said "I need 4 hours" and your job is still running after 4 hours — SLURM terminates it. You have to be honest about what you need.
 
@@ -61,7 +61,7 @@ So think of it as: **Your computer → Login node → Cluster**. You never inter
 
 But here's the critical rule — and I really can't stress this enough:
 
-> ⚠️ **NEVER run computations on the login node.** The login node is not for running your experiments, simulations, or training your models. It's only for managing and launching your work. It only has 2 CPUs. All the heavy lifting happens on the compute nodes (ada, thor, pampero, tramuntana-n1, barracuda, vscode-node01, vscode-node02), and SLURM is the one who sends your work there. It only has very limited umber of CPUs (2 CPUs) which are only sufficient for running SLURM, sending your jobs to the Compute node and handling your activity while you are on that node (tramuntana) (your activities include bash commands etc).
+> ⚠️ **NEVER run computations on the login node.** The login node (`tramuntana`) is a shared virtual machine (**10 vCPUs, 32 GB RAM**) dedicated strictly to running SLURM, Open OnDemand, user logins, and submitting jobs—not running experiments, simulations, or [multi-hour data transfers](data-transfers-and-storage.md#6-large-cluster-transfers-via-slurm-move-to-datasbatch--transferring-in-parts). All heavy lifting (and heavy reading/writing—see [Reading & Writing Best Practices](data-transfers-and-storage.md#3-reading-data-where--how-to-read-by-file-size--frequency)) happens on the compute nodes (`ada`, `thor`, `pampero`, `tramuntana-n1`, `barracuda`, `vscode-node01`, `vscode-node02`), and SLURM is the one who sends your work there.
 
 Think of it like the reception desk at a factory. You walk in, check in at reception, tell them what you need built — and then the factory workers (compute nodes) do the actual work. You wouldn't start welding metal at the reception desk, right? Same idea.
 
@@ -73,10 +73,10 @@ This is a common source of confusion, so let's be crystal clear:
 
 | | **tramuntana** | **tramuntana-n1** |
 |---|---|---|
-| **What is it?** | The login node | A compute node |
-| **What runs here?** | SLURM (the manager) | Your jobs |
+| **What is it?** | The login node (VM) | A compute node |
+| **What runs here?** | SLURM & Open OnDemand | Your jobs |
 | **Can I run computations here?** | ❌ **No!** | ✅ Yes (via SLURM) |
-| **Specs** | 24 cores, 128 GB RAM | 48 cores, 384 GB RAM, NVIDIA L40S GPU |
+| **Specs** | 10 vCPUs, 32 GB RAM | 48 cores, 384 GB RAM, NVIDIA L40S GPU |
 
 **tramuntana** = the front door, the manager's office.
 **tramuntana-n1** = one of the workers on the factory floor. It happens to have a GPU, making it great for AI/ML work.
@@ -90,7 +90,7 @@ Let's zoom out and see the full picture of how you actually interact with the Tr
 
 ![SLURM Cluster Architecture Diagram](images/slurm-architecture.png)
 
-That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **7 compute nodes** (where your jobs run) + **2 storage servers** (where your files live). All connected through a fast 10 Gbps network. 
+That's the whole system! You connect to the login node, SLURM takes your requests and sends them to the right compute node, and your files live on the storage servers. So the full picture of the Tramuntana cluster is: **1 login node** (your entry point) + **7 compute nodes** (where your jobs run — `ada`, `thor`, `tramuntana-n1`, and `pampero` on the 10 Gbps cluster switch; `barracuda`, `vscode-node01`, and `vscode-node02` on the 1 Gbps office network) + **2 storage servers** (where your files live).
 
 ---
 
@@ -105,15 +105,13 @@ Tramuntana has **three partitions**:
 | Partition | Which Nodes Can It Use? | Max Time | Priority | Best For |
 |-----------|-------------------------|----------|----------|----------|
 | **express** | All 7 compute nodes | 2 hours | ⚡ Highest (200) | Quick tests, debugging, compiling code |
-| **cpu** *(default)* | All 7 compute nodes | 10 days | Normal (50) | Long CPU-intensive jobs, R analyses, simulations |
-| **gpu** | Only tramuntana-n1, thor & barracuda (the ones with GPUs) | 10 days | High (100) | AI/ML training, GPU-accelerated computing |
+| **cpu** *(default)* | All 7 compute nodes | 30 days *(temporary; planned 10 days)* | Normal (50) | Long CPU-intensive jobs, R analyses, simulations |
+| **gpu** | Only tramuntana-n1, thor & barracuda (the ones with GPUs) | 30 days *(temporary; planned 10 days)* | High (100) | AI/ML training, GPU-accelerated computing |
 
 **How to pick one:**
 - Need a quick 30-minute test? Use `--partition=express`. It gets higher priority so you won't wait long.
-- Running a big simulation overnight? Use `--partition=cpu` (or just don't specify — it's the default).
+- Running a big simulation overnight? Use `--partition=cpu` (or just don't specify — it's the default, with a 1-hour default `--time` if omitted).
 - Training a neural network on a GPU? Use `--partition=gpu`.
-
-**Per-user limits:** Each user can have at most **20 jobs running at the same time** and **50 jobs total in the queue**. This makes sure nobody hogs all the resources.
 
 ## Recap: What You've Learned
 

@@ -4,7 +4,8 @@ This guide covers advanced usage of SLURM, including deep-dives into job paramet
 
 **Other Practical Guides:**
 - [**Quick Start & Commands**](0-quick-start.md) — Connecting to the cluster and running your first job.
-- [**Software & Environments**](environments-and-software.md) — Managing Python environments (`uv`, Conda) and using R/RStudio.
+- [**Data Transfers, Reading & Storage Best Practices**](data-transfers-and-storage.md) — Uploading/downloading data, reading big vs. small files, and SLURM batch transfers (`move-to-data.sbatch`).
+- [**Software & Environments**](environments-and-software.md) — Managing Python environments (`uv`, Conda), R/RStudio, MATLAB, Pixi, and Apptainer.
 
 ---
 
@@ -17,8 +18,7 @@ This guide covers advanced usage of SLURM, including deep-dives into job paramet
 | 3 | [Job Arrays — Running Many Independent Jobs](#3-job-arrays--running-many-independent-jobs) |
 | 4 | [Job Dependencies — Running Successive & Chained Jobs (Pipelines)](#4-job-dependencies--running-successive--chained-jobs-pipelines) |
 | 5 | [Commands & Monitoring Reference](#5-commands--monitoring-reference) |
-| 6 | [Transferring Files with `rsync` (Local ↔ Cluster & SLURM Batch Transfers)](#6-transferring-files-with-rsync-local--cluster--slurm-batch-transfers) |
-| 7 | [SSH Setup & Passwordless Login (Linux, macOS, Windows)](#7-ssh-setup--passwordless-login-linux-macos-windows) |
+| 6 | [SSH Setup & Passwordless Login (Linux, macOS, Windows)](#6-ssh-setup--passwordless-login-linux-macos-windows) |
 
 ---
 ## 1. Important SLURM Arguments Explained
@@ -94,76 +94,9 @@ Chooses which partition (see Section 2 above) your job will run in. If you need 
 > - Jobs requesting more than default resources must **explicitly specify** them using `--cpus-per-task` and `--mem`.
 > - Jobs exceeding their memory limits will be **automatically terminated** by SLURM (via cgroups).
 > - Default job runtime is **1 hour**; specify `--time` for longer jobs.
-> - All nodes are available in the `cpu` and `express` partitions.
-> - GPU nodes (`tramuntana-n1`, `thor`) are available in the `gpu` partition; `thor` has 2× RTX 6000 Ada GPUs.
-> - **User limits**: Maximum **20 jobs running** simultaneously, maximum **50 jobs in queue** per user.
-
----
-
-## 5. GPU Jobs on Tramuntana
-
-Only two nodes have GPUs:
-- **tramuntana-n1**: 1× NVIDIA L40S (48 GB VRAM)
-- **thor**: 2× NVIDIA RTX 6000 Ada (48 GB VRAM each)
-
-To use a GPU, you need two things: the `gpu` partition and the `--gres=gpu_mem:N` flag, where **N is the amount of GPU VRAM in GB** that your job needs.
-
-> [!IMPORTANT]
-> **On Tramuntana, you request GPU *memory*, not whole GPUs.** The cluster shares GPUs between users. Instead of locking out an entire 48 GB GPU for a job that only needs 8 GB, you ask for exactly what you need: `--gres=gpu_mem:8`. This lets multiple jobs run on the same physical GPU simultaneously.
->
-> If you try to use the standard `--gres=gpu:1` syntax, the system will silently cap your allocation to a 12 GB default. **Always use `--gres=gpu_mem:N` to get the amount you actually want.**
-
-### GPU Job Script Example
-
-```bash
-#!/bin/bash
-#SBATCH --job-name=gpu-training
-#SBATCH --output=gpu-output_%j.txt
-#SBATCH --error=gpu-error_%j.txt
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --gres=gpu_mem:20             # Request 20 GB of GPU VRAM
-#SBATCH --time=08:00:00
-#SBATCH --partition=gpu               # Must use GPU partition!
-#SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=your-email@uib.es
-
-# --- Using uv (recommended) ---
-uv run python train_model.py
-
-# --- Using Conda instead? ---
-# source /data/shared/miniforge3/bin/activate
-# conda activate myproject
-# python train_model.py
-# conda deactivate
-```
-
-> [!CAUTION]
-> 🚨 **CHANGE YOUR EMAIL!** Replace `your-email@uib.es` with **your actual email address!**
-
-If you want to request a **specific node** (e.g., you need thor for its higher RAM):
-```bash
-#SBATCH --gres=gpu_mem:40
-#SBATCH --nodelist=thor
-```
-
-### Common GPU Memory Amounts
-
-| What you're doing | Suggested `gpu_mem` |
-|---|---|
-| Small model inference / quick test | `gpu_mem:4` to `gpu_mem:8` |
-| Medium model training | `gpu_mem:16` to `gpu_mem:24` |
-| Large model / full GPU | `gpu_mem:48` (entire GPU) |
-
-> [!NOTE]
-> Each GPU has 48 GB of VRAM. The maximum you can request for a single job is `gpu_mem:48` (one full GPU).
->
-> **Multi-GPU jobs are not currently supported.** The cluster does not yet have the configuration for jobs that span multiple GPUs with inter-GPU communication (e.g., PyTorch DDP across 2 GPUs). If your model fits in 48 GB, you're good. If there's demand for multi-GPU training in the future, this can be set up.
-
-### How GPU Sharing Works
-
-Multiple people can share the same physical GPU on Tramuntana. When you request `--gres=gpu_mem:20`, SLURM reserves 20 GB of VRAM on one GPU for your job. A watchdog process continuously monitors actual memory usage and enforces the limit — so you won't crash other people's work and they won't crash yours. Just write your code normally (e.g., `tensor.to("cuda:0")`) and SLURM handles the rest.
+> - All 7 compute nodes are available in the `cpu` and `express` partitions.
+> - All 3 GPU nodes (`thor` with 2× RTX 6000 Ada 48 GB, `tramuntana-n1` with 1× L40S 48 GB, and `barracuda` with 1× GV100 32 GB) are available in the `gpu` partition. For full GPU job syntax (`--gres=gpu_mem:N`) and templates, see [**GPU Jobs on Tramuntana in Quick Start**](0-quick-start.md#3-gpu-jobs-on-tramuntana).
+> - **Fair scheduling**: SLURM prioritizes jobs by partition tier (`express` > `gpu` > `cpu`) and resource availability; when submitting large Job Arrays, consider throttling concurrent tasks (e.g., `--array=1-100%10`) to leave headroom for others.
 
 ---
 
@@ -190,6 +123,8 @@ barracuda       |    0 /   20 CPUs |     0 /    62 GB
 tramuntana-n1   |    0 /   48 CPUs |     0 /   377 GB
 ada             |    0 /  256 CPUs |     0 /   756 GB
 thor            |  114 /  128 CPUs |  1228 /  1512 GB
+vscode-node01   |    0 /   12 CPUs |     0 /    14 GB
+vscode-node02   |    0 /    8 CPUs |     0 /    30 GB
 =======================================================================
 ```
 
@@ -288,14 +223,14 @@ This runs `nvidia-smi` inside your existing job's allocation. You'll see output 
 
 The `Processes` table at the bottom shows you each job's actual VRAM consumption — `8192MiB` means that process is using ~8 GB of the GPU's 48 GB.
 
-#### C. Hop Directly into the Compute Node with an Interactive Shell
+#### D. Hop Directly into the Compute Node with an Interactive Shell
 Want full interactive terminal access on the compute node where your job is executing?
 ```bash
 srun --jobid=<YOUR_JOB_ID> --overlap --pty bash
 ```
 This drops you directly into an interactive shell inside your job allocation on that compute node. You can run `htop`, `nvidia-smi`, `ps aux`, or inspect temporary files. Type `exit` when you are done.
 
-#### D. Alternative: SSH into the Compute Node
+#### E. Alternative: SSH into the Compute Node
 Check which node your job is running on (`squeue -u $USER` under `NODELIST`, e.g. `thor`), then SSH directly to it from `tramuntana`:
 ```bash
 ssh thor
@@ -712,214 +647,11 @@ Use `seff` after every job to learn whether you're requesting too much or too li
 
 ---
 
-## 6. Transferring Files with `rsync` (Local ↔ Cluster & SLURM Batch Transfers)
+## 6. SSH Setup & Passwordless Login (Linux, macOS, Windows)
 
-`rsync` (Remote Sync) is the recommended tool for moving code, datasets, and simulation results between your local computer and Tramuntana. Unlike basic `scp`, `rsync` only copies files that have changed (diffs), provides a live progress bar, and automatically resumes interrupted transfers if your network connection drops.
-
-### Recommended Flags: `-avzP`
-
-```bash
-rsync -avzP source/ destination/
-```
-- `-a` (**archive**): Recursively syncs files while preserving permissions, timestamps, owner info, and symlinks.
-- `-v` (**verbose**): Displays filenames as they are being transferred.
-- `-z` (**compress**): Compresses file data during transfer to speed up network throughput.
-- `-P` (**progress & partial**): Shows a live progress bar and speed, and keeps partially transferred files so interrupted transfers can resume instead of restarting from 0%.
-
-> [!IMPORTANT]
-> **The Trailing Slash Rule (`dir/` vs `dir`):**
-> - `rsync -avzP ./my_code/ user@tramuntana:~/my_code/` copies the **contents** inside `./my_code` directly into `~/my_code/`.
-> - `rsync -avzP ./my_code user@tramuntana:~/` creates the folder `my_code` inside `~/`.
-> - When in doubt, test your command first with `--dry-run` to see what would be transferred without making any changes!
-
----
-
-### Scenario 1: Running `rsync` from your LOCAL machine (Recommended)
-
-Running `rsync` from your personal laptop or workstation terminal (connected to IMEDEA Ethernet or VPN) is the **simplest and most common workflow**, because your laptop can directly connect to the Tramuntana login node (`10.33.0.143`).
-
-#### A. Uploading to Tramuntana (Local → Cluster)
-
-- **Upload to `/home` (personal code, git repos, configs — backed up nightly):**
-  ```bash
-  # Upload a project folder
-  rsync -avzP ./my_project/ username@10.33.0.143:~/my_project/
-
-  # If you set up ~/.ssh/config alias:
-  rsync -avzP ./my_project/ tramuntana:~/my_project/
-  ```
-
-- **Upload to `/data` (large group datasets, raw inputs — NOT backed up):**
-  ```bash
-  # Upload directly to your research group directory on shared storage
-  rsync -avzP ./raw_data/ username@10.33.0.143:/data/<your_group_name>/raw_data/
-  ```
-
-#### B. Downloading from Tramuntana (Cluster → Local)
-
-- **Download results from `/home` to your laptop:**
-  ```bash
-  rsync -avzP username@10.33.0.143:~/my_project/results/ ./local_results/
-  ```
-
-- **Download large output files from `/data`:**
-  ```bash
-  rsync -avzP username@10.33.0.143:/data/<your_group_name>/model_output/ ./local_results/
-  ```
-> **💡 Easier Alternatives:**
-> - **GUI:** Use the **Open OnDemand Web File Explorer** (**Files → Home Directory**). You can upload and download files directly through your web browser with a simple button click or drag-and-drop, without touching SSH at all!
-
----
-
-### Scenario 2: Transferring Large Datasets on the Cluster via SLURM (The Preferred Method)
-
-When migrating large datasets internally on the cluster—such as moving folders from compute node local drives (`/scratch`, `/datalocal` on `thor` or `ada`) or external machines (`datalab:`) to central shared storage (`/data`)—**do NOT use unthrottled `cp`, cross-mount `mv`, or unthrottled `rsync` directly in a terminal on the login node or compute nodes.**
-
-> [!CAUTION]
-> 🚨 **Why interactive unthrottled transfers are prohibited on `/data`:**
-> 1. **Cluster-Wide Storage Bottleneck:** The central storage server (`tramuntana-nas`) serves `/data` across the network via NFS backed by a spinning HDD RAID6 array (~100–150 MB/s total sustained writes shared across all users). If a user runs unthrottled `cp` or `rsync` on multi-terabyte datasets, it saturates the NAS disks and NFS worker threads, slowing down `/data` for everyone else.
-> 2. **Session Vulnerability:** If you run an interactive transfer in your terminal and your laptop sleeps, VPN drops, or SSH times out, the transfer is killed abruptly, leaving partially copied and fragmented data.
->
-> **The preferred and official way is to run a SLURM batch job** (`move-to-data.sbatch`) that copies to `/data` in the background with a bandwidth cap (`--bwlimit=100M`), leaving NAS disk and slot headroom for everyone else.
-
-#### Good Practices Cheat Sheet (Which Tool & Limit for Which Size)
-
-| Dataset Size / Situation | Recommended Tool & Full Command | Limit & Reasoning |
-| :--- | :--- | :--- |
-| **Small files (< 10 GB)** to `/home` or `/data` | `cp -r /path/to/folder /data/<group>/$USER/` | Quick (~1 min max on `/data`), simple, low impact. For `/home` (NVMe), `cp` is fastest (~420–600 MB/s). |
-| **Moving inside the *same* filesystem** (e.g. `/data/tmp/$USER/x` → `/data/<group>/x`) | `mv /data/tmp/$USER/x /data/<group>/x` | **Instant (0 MB/s network/disk copy)**—Linux only updates the folder pointer. *(Warning: `mv` across different mounts like `/scratch` → `/data` is actually an unthrottled `cp` + delete!)* |
-| **Large transfers (> 10–50 GB, multi-TB, or thousands of files) into `/data`** | Copy `/data/shared/move-to-data.sbatch` and run via `sbatch`, which executes:<br>`rsync -a --no-g --chmod=Dg+s --partial --mkpath --stats --bwlimit=100M "$SRC" "$DST"` | **Capped at `--bwlimit=100M` (100 MB/s).** Why: `/data` HDDs sustain ~100–150 MB/s total; `rsync` resumes on disconnect (`--partial`), applies group quotas (`--no-g --chmod=Dg+s`), and leaves ~30–50 MB/s disk headroom for everyone else. |
-| **Heavy I/O jobs (> 10 GB, `cdo mergetime`, unpacking, checkpoints)** | Work inside `/scratch/$USER/job_${SLURM_JOB_ID}/`, then copy only final results back:<br>`rsync -a --partial --bwlimit=100M /scratch/$USER/job_${SLURM_JOB_ID}/final/ /data/<group>/$USER/` | `/scratch` runs at **~890 MB/s** with zero network traffic. Never run heavy intermediate I/O directly on `/data`. |
-| **From your office desktop** | `rsync -avP /local/folder/ tramuntana:/data/<group>/$USER/folder/` | Capped naturally at **~110 MB/s** by the 1 Gbps campus LAN (already safe for `/data`, no `--bwlimit` needed from desktop). |
-
----
-
-#### 1. How to Calculate Transfer Time & Size `--time`
-
-The official SLURM transfer script caps bandwidth at **100 MB/s** (`--bwlimit=100M`). This ensures the NAS remains fast and responsive for all other researchers while your data moves steadily in the background.
-
-##### The Mathematical Formula:
-* Speed: $100\text{ MB/s} = 360,000\text{ MB/hour} = 360\text{ GB/hour} \approx 0.36\text{ TB/hour}$.
-* Daily throughput: $0.36\text{ TB/hour} \times 24\text{ hours} \approx 8.64\text{ TB/day}$.
-
-$$\text{Estimated Time (Hours)} = \frac{\text{Dataset Size in GB}}{360} \approx \frac{\text{Dataset Size in TB}}{0.36}$$
-
-> [!NOTE]
-> **Small Files Overhead:** If your dataset contains hundreds of thousands or millions of small files (< 1 MB each, such as raw text logs, small CSVs, or image tiles), filesystem metadata and directory traversal will reduce the effective speed. **Always add a 30%–50% safety buffer** to your calculated time when setting `#SBATCH --time`.
-
-##### Quick Reference Table:
-| Dataset Size | Bandwidth Cap | Real-World Throughput | Estimated Duration | Recommended `#SBATCH --time` |
-| :--- | :--- | :--- | :--- | :--- |
-| **250 GB** | 100 MB/s | ~360 GB/h | ~45 minutes | `--time=02:00:00` |
-| **500 GB** | 100 MB/s | ~360 GB/h | ~1.4 hours | `--time=03:00:00` |
-| **1 TB** | 100 MB/s | ~360 GB/h | ~2.8 hours | `--time=06:00:00` |
-| **5 TB** | 100 MB/s | ~360 GB/h | ~14 hours | `--time=1-00:00:00` (1 day) |
-| **10 TB** | 100 MB/s | ~360 GB/h | ~28 hours (~1.2 days) | `--time=2-00:00:00` (2 days) |
-| **25 TB** | 100 MB/s | ~360 GB/h | ~70 hours (~2.9 days) | `--time=4-00:00:00` (4 days) |
-| **55 TB** | 100 MB/s | ~360 GB/h | ~153 hours (~6.4 days) | `--time=10-00:00:00` (10 days) |
-
----
-
-#### 2. Pre-Transfer Cleanup Checklist
-
-Before copying anything to `/data`, audit your directories and clean up:
-* 🗑️ **Delete intermediate & scratch files:** Remove temporary checkpoint files, unneeded intermediate caches, and raw logs.
-* 🗑️ **Delete regenerable outputs:** If an output can be easily recomputed with a short script, do not consume multi-terabyte central storage.
-* 🗑️ **Do NOT duplicate public datasets:** Datasets such as **ERA5, CMIP6, and CMEMS** are centrally maintained in `/data/opendata/`. Delete any personal local duplicates.
-
----
-
-#### 3. Where to Put Your Data in `/data`
-
-* **Datasets under 500 GB:** Transfer them directly to your research group's directory:
-  `/data/<your_group>/` (e.g., `/data/POC/`, `/data/DataLab/`, etc.).
-* **Large Datasets (> 500 GB, tens of TBs):** Transfer them to the dedicated staging area:
-  `/data/tmp/$USER/your-folder/` *(This folder is already pre-created on the cluster)*.
-
----
-
-#### 4. Step-by-Step: Setting Up and Running the Batch Copy Job
-
-##### Step 1: Copy the Template Script to Your Working Directory
-On the login node (`tramuntana`), copy the official cluster template:
-```bash
-cp /data/shared/move-to-data.sbatch .
-```
-
-##### Step 2: Edit the Script
-Open `move-to-data.sbatch` in your favorite editor (e.g., `nano move-to-data.sbatch`):
-
-```bash
-#!/bin/bash
-# Tramuntana: copy a large folder into /data.
-# Big copies go directly to /data over NFS with a bandwidth cap (--bwlimit=100M)
-# so they leave NAS disk and slot headroom for everyone else.
-# Submit with: sbatch move-to-data.sbatch
-#
-#SBATCH --job-name=move-to-data
-#SBATCH --nodelist=thor              # CHANGE: the node where the data is now
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=4G
-#SBATCH --time=14-00:00:00
-#SBATCH --dependency=singleton       # only one copy with this name runs at a time
-#SBATCH --output=move-to-data-%j.log
-
-# CHANGE: what to copy and where to. Keep the slash at the end of both paths.
-SRC=/datalocal/your-folder/
-DST=/data/tmp/$USER/your-folder/
-
-# --no-g --chmod=Dg+s: the copied files take the group of the destination
-# folder, so they count in your group's quota. Never add -S.
-# --bwlimit: leave room on the NAS for everyone else.
-rsync -a --no-g --chmod=Dg+s --partial --mkpath --stats --bwlimit=100M "$SRC" "$DST"
-
-# To check the copy afterwards (lists only what differs):
-# rsync -a -n --checksum -i "$SRC" "$DST"
-```
-
-> [!IMPORTANT]
-> **Key Directives Explained:**
-> * **`--nodelist=thor` vs `--nodelist=ada`:** Set this to the node where the source data physically resides. If your data is on `ada`, change this to `--nodelist=ada`.
-> * **`--dependency=singleton`:** If you submit multiple migration jobs with the same name (`#SBATCH --job-name=move-to-data`), SLURM will automatically queue them sequentially and run only **one job at a time**, preventing multiple copies from competing for the same disk I/O.
-> * **The Trailing Slash (`/`):** Both `SRC` and `DST` must end with `/`. Leaving off the slash will cause `rsync` to nest folders unintentionally (e.g. `your-folder/your-folder/`).
-
-##### Step 3: Submit the Job
-```bash
-sbatch move-to-data.sbatch
-# Output: Submitted batch job 14210
-```
-
-##### Step 4: Monitor the Transfer Progress
-You can check if the job is running with:
-```bash
-squeue -u $USER
-```
-To view the live transfer log and speed:
-```bash
-tail -f move-to-data-*.log
-```
-*(Press `Ctrl+C` to exit the log view).*
-
-##### Step 5: Verify Transfer Completeness (Idempotency)
-When the job finishes, verify that everything transferred correctly:
-1. **Re-submit the exact same script:**
-   ```bash
-   sbatch move-to-data.sbatch
-   ```
-   Because `rsync` only copies modified or missing files, it will perform a fast scan. If it reports that **0 files** were copied, your data is 100% synchronized!
-2. **Optional Dry-Run Checksum Verification:**
-   To perform an in-depth checksum comparison between source and destination without modifying files:
-   ```bash
-   rsync -a -n --checksum -i "$SRC" "$DST"
-   ```
-
-> [!WARNING]
-> **Reminder on Cluster Backups:**  
-> Personal code, scripts, git repos, and configuration files stored in `/home` are backed up nightly. The bulk shared storage `/data` (including `/data/tmp/`) does **not** currently have automated off-site backups. Always ensure critical scripts and project repositories are stored in `/home` or pushed to remote Git repositories (GitHub/GitLab).
-
----
-
-## 7. SSH Setup & Passwordless Login (Linux, macOS, Windows)
+> [!TIP]
+> **Looking for `rsync`, `move-to-data.sbatch`, or reading/writing speed rules?**  
+> All file transfer commands, upload/download examples, and I/O best practices now live in [**Data Transfers, Reading & Storage Best Practices**](data-transfers-and-storage.md).
 
 Connecting to Tramuntana using `ssh username@10.33.0.143` and typing your password every time works, but it quickly becomes repetitive. By setting up an **SSH host alias** in your config file and configuring **SSH keys**, you can log in, run interactive jobs, and execute file transfers with `rsync` instantly—without typing passwords or remembering IP addresses ever again.
 
@@ -1023,19 +755,22 @@ You should now connect directly to the Tramuntana login node without entering yo
 With your SSH alias and passwordless keys configured, **`rsync` transfers become effortless and completely automated**. You no longer need to type long IP addresses or stop to enter passwords:
 
 ```bash
-# Upload project code to /home:
+# Upload project code to /home (~100-110 MB/s on office LAN; backed up nightly):
 rsync -avzP ./my_project/ tramuntana:~/my_project/
 
-# Upload large dataset to /data:
-rsync -avzP ./raw_data/ tramuntana:/data/<your_group_name>/raw_data/
+# Upload active dataset to /projects (~100-110 MB/s on office LAN; NVMe, backed up nightly):
+rsync -avP ./active_data/ tramuntana:/projects/<your_project>/active_data/
 
-# Download simulation outputs back to your laptop:
-rsync -avzP tramuntana:~/my_project/results/ ./local_results/
+# Upload bulk dataset to /data (auto-capped at ~31-35 MB/s by tramuntana; NOT backed up):
+rsync -avP ./raw_data/ tramuntana:/data/<your_group_name>/$USER/raw_data/
+
+# Download simulation outputs back to your laptop (~100-110 MB/s on office LAN):
+rsync -avP tramuntana:/data/<your_group_name>/$USER/results/ ./local_results/
 ```
 
 > [!TIP]
-> **Understanding `rsync` in depth:**
-> For a full breakdown of how `rsync` works, the `-avzP` flags, the critical trailing slash rule (`dir/` vs `dir`), bidirectional upload/download workflows, and SLURM batch migrations, see [**Section 6: Transferring Files with `rsync` (Local ↔ Cluster & SLURM Batch Transfers)**](#6-transferring-files-with-rsync-local--cluster--slurm-batch-transfers).
+> **Understanding `rsync`, reading/writing speeds, and SLURM batch transfers in depth:**
+> For the trailing slash rule (`dir/` vs `dir`), `cp` vs `rsync` size cutoffs, small-file `.tar`/shard rules, and `move-to-data.sbatch`, see [**Data Transfers, Reading & Storage Best Practices**](data-transfers-and-storage.md).
 
 
 

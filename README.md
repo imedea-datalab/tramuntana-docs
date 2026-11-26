@@ -6,18 +6,19 @@
 ## 📚 Table of Contents
 
 ### Commands & Usage Guide
-*Code, commands, and software environments.*
-* [**Quick Start & Commands**](0-quick-start.md) — The essential cheat sheet for SSH, SLURM commands, GPUs, and job management.
-* [**Open OnDemand: Interactive Apps**](open-ondemand.md) — Launch MATLAB, VS Code, and RStudio directly from your browser.
-* [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) — Advanced SLURM options, Job Arrays, Successive Jobs (Pipelines), and GPU monitoring.
-* [**Software & Environments**](environments-and-software.md) — Managing Python environments (`uv`, Conda) and using R/RStudio.
+*Code, commands, data transfers, and software environments.*
+* [**Quick Start & Commands**](0-quick-start.md) — The essential cheat sheet for SSH, SLURM commands, GPUs, and job profiling (`tramuntana-profile`).
+* [**Open OnDemand: Interactive Apps**](open-ondemand.md) — Launch MATLAB, VS Code, RStudio, and the Web File Explorer directly from your browser.
+* [**Data Transfers, Reading & Storage Best Practices**](data-transfers-and-storage.md) — Network speeds, reading big vs. small-file datasets, `cp` vs. `rsync` cutoffs, and `move-to-data.sbatch`.
+* [**SLURM Commands & Monitoring**](0b-commands-in-depth.md) — Advanced SLURM options, Job Arrays, Successive Jobs (Pipelines), GPU monitoring, and SSH key setup.
+* [**Software & Environments**](environments-and-software.md) — Managing Python (`uv`, Conda), R/RStudio, MATLAB, Pixi, and Apptainer containers.
 
 ### Understanding Tramuntana (Under the Hood)
 *Understand `tramuntana` as a whole and its architecture, network, and file system.*
 * [**1. Under the Hood**](1-under-the-hood.md) — Understanding the basics to make sure that when you run commands you know what's going on.
 * [**2. Meet the Manager — SLURM**](2-what-is-slurm.md) — The program that sits between you and the cluster — what it does and how it organizes work.
 * [**3. Getting Connected**](3-getting-connected.md) — What IP addresses and DNS are, how the office network works, what SSH and VPN actually do.
-* [**4. The File System**](4-the-file-system.md) — Where your files live — home directories, group storage, and quotas.
+* [**4. The File System**](4-the-file-system.md) — Where your files live (`/home`, `/projects`, `/data`, `/archive`, `ada:/scratch`), quotas, and backups.
 
 ---
 **Institution**: IMEDEA UIB-CSIC  

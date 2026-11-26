@@ -8,7 +8,7 @@ Open OnDemand (OOD) provides a user-friendly web interface to the Tramuntana clu
 2. **Login**: Use your standard IMEDEA username and password.
 3. **Launch Apps**: In the top navigation bar, click on **Interactive Apps** and select the application you want to launch (e.g., MATLAB, VS Code, RStudio, or Interactive Compute Allocation).
 
-## 📁 Web File Explorer: Managing Files in `/home` and `/data`
+## 📁 Web File Explorer: Managing Files in `/home`, `/projects`, `/data`, and `/archive`
 
 Open OnDemand includes a full graphical file manager directly in your web browser. You can browse, upload, download, and organize files on Tramuntana without touching the command line or using SFTP clients.
 
@@ -16,12 +16,14 @@ Open OnDemand includes a full graphical file manager directly in your web browse
 1. In the top navigation bar, click on **Files** → **Home Directory**.
 2. By default, this opens your personal `/home/<username>` folder on Tramuntana.
 
-### Navigating to Other Folders (e.g., `/data`):
+### Navigating to Other Folders (`/projects`, `/data`, `/archive`):
 While it opens in your Home directory by default, you can freely navigate anywhere on the cluster that your account has permission to read or write:
 - Click on folder names to browse deeper, or click the path breadcrumbs at the top to jump back up.
 - Click the **Change Directory** button (or click the path bar) to type a specific directory path, such as:
+  - `/projects/<your_project>` for fast NVMe active project folders (backed up nightly).
   - `/data/<your_group_name>` to browse and manage shared research datasets.
-  - `/data/shared` to check shared software and environments.
+  - `/archive/<your_group_name>` to access cold/archival group datasets.
+  - `/data/shared` to check shared software and templates (like `move-to-data.sbatch`).
 
 ### What you can do directly from your browser:
 - ⬆️ **Upload:** Click the **Upload** button in the toolbar to select files, or simply **drag and drop** files from your computer directly into the browser window.
@@ -52,7 +54,7 @@ When you select an interactive app, you will be presented with a form to request
 Here is an explanation of the typical input fields:
 
 - **Partition**: Select the queue you want to submit your job to (e.g., `cpu` or `gpu`).
-- **Specific Node**: Optionally request a specific compute node from the dropdown list. You can choose from heavy compute nodes (`thor`, `tramuntana-n1`, `pampero`), the GPU node `barracuda`, or the lightweight interactive nodes `vscode-node01` and `vscode-node02` (which are intended specifically for code editing and very low-CPU interactive tasks).
+- **Specific Node**: Optionally request a specific compute node from the dropdown list. You can choose from heavy compute nodes (`ada`, `thor`, `tramuntana-n1`, `pampero`), the GPU node `barracuda`, or the lightweight interactive nodes `vscode-node01` and `vscode-node02` (which are intended specifically for code editing and very low-CPU interactive tasks).
 - **Number of hours**: The maximum duration your interactive session will run. After this time, the job will be automatically terminated.
 - **Number of cores (Tasks)**: The number of CPU cores you are requesting. For a standard session, 1-4 cores are usually sufficient unless you are running highly parallel code.
 - **Memory (GB) per node**: The amount of RAM you need. Requesting too much can delay your job from starting, so ask for what you reasonably expect to use.
@@ -61,10 +63,8 @@ Here is an explanation of the typical input fields:
 - **GPU Partition**: If requesting a GPU, select the specific GPU partition.
 - **Additional SLURM arguments**: Advanced users can pass extra SLURM flags here (e.g., `--exclude=node_name`).
 
-> [!WARNING]
-> **Important Note on MATLAB Versions:** When launching MATLAB, you may see an option for **MATLAB R2025b (Host Install)**. Please note that this version relies on a legacy local installation and **will not work** on newly added compute nodes (e.g., `vscode-node01`). For reliable execution across the entire cluster, it is highly recommended to select **MATLAB R2020b**, which utilizes the modern Apptainer containerized infrastructure. The 2025b option will be transitioned to the containerized approach in the future. So if you need any specific version, plese contact datalab, we can install for you.
->
-> **Note on GPU Support (MATLAB vs RStudio):** Unlike RStudio (which automatically enables GPU acceleration via NVIDIA drivers when a GPU partition is selected), **MATLAB currently cannot use the GPU**. The deployed MATLAB versions require an additional license and do not include the Parallel Computing Toolbox. Consequently, native MATLAB GPU commands (like `gpuDeviceCount` or `gpuArray`) will not work out of the box, even if you select a GPU node like `barracuda`. If you require GPU acceleration inside MATLAB, please contact datalab to discuss custom licensing or container builds.
+> [!NOTE]
+> **Selecting a MATLAB Version:** Choose **`MATLAB R2025b (Container)`** (recommended—runs the standardized cluster Apptainer image with widely used MathWorks toolboxes across all compute nodes) or **`MATLAB R2020b (Container)`** for legacy scripts. Avoid selecting `MATLAB R2025b (Legacy Host - Deprecated)`, which relies on an older host-local install and does not run on newer nodes like `vscode-node01`. If you need an additional toolbox or custom GPU/container setup, please contact DataLab (see [Using MATLAB on the Cluster](environments-and-software.md#using-matlab-on-the-cluster)).
 
 Once you fill out the form, click **Launch**. Your job will be placed in the SLURM queue. Once resources are available, the status will change to "Running," and you can click **Connect** to open the interface in a new tab.
 
