@@ -157,6 +157,7 @@ Whether you scan 100,000 small files **once** or loop over them **repeatedly** (
 ```bash
 #!/bin/bash
 #SBATCH --job-name=fast_io_job
+#SBATCH --nodes=1                    # Strictly keep the job on ada only
 #SBATCH --nodelist=ada
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
@@ -286,10 +287,11 @@ $$\text{Estimated Hours} \;\approx\; \frac{\text{Dataset Size in GB}}{120}$$
    ```bash
    cp /data/shared/move-to-data.sbatch .
    ```
-2. Edit `SRC`, `DST`, `--time`, and (if copying from `ada:/scratch`) `--nodelist=ada`:
+2. Edit `SRC`, `DST`, `--time`, and (if copying from `ada:/scratch`) `--nodes=1` + `--nodelist=ada`:
    ```bash
    #!/bin/bash
    #SBATCH --job-name=move-to-data
+   #SBATCH --nodes=1                    # Strictly keep job on 1 node when using --nodelist
    #SBATCH --nodelist=ada               # Needed only if SRC is on ada:/scratch
    #SBATCH --cpus-per-task=2
    #SBATCH --mem=4G
