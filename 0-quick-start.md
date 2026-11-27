@@ -143,7 +143,7 @@ Sometimes you don't want to submit a script and walk away — you want to sit at
 `salloc` tells SLURM: *"Hey, reserve me some resources. I want to use them manually, right now."*
 
 ```bash
-salloc --cpus-per-task=4 --mem=20G --time=24:00:00 --nodelist=thor --partition=gpu --gres=gpu_mem:40 
+salloc --nodes=1 --cpus-per-task=4 --mem=20G --time=24:00:00 --nodelist=thor --partition=gpu --gres=gpu_mem:40
 ```
 
 > [!TIP]
@@ -394,11 +394,15 @@ uv run python train_model.py
 > [!CAUTION]
 > 🚨 **CHANGE YOUR EMAIL!** Replace `your-email@uib.es` with **your actual email address!**
 
-If you want to request a **specific node** (e.g., you need thor for its higher RAM):
+If you want to request a **specific node** (e.g., you need `thor` for its higher RAM), always pair `--nodelist` with `--nodes=1`:
 ```bash
+#SBATCH --nodes=1             # Prevent spillover onto other nodes (essential if --ntasks > 1)
 #SBATCH --gres=gpu_mem:40
 #SBATCH --nodelist=thor
 ```
+
+> [!IMPORTANT]
+> **`--nodelist` alone does NOT limit your job to a single node!** In SLURM, `--nodelist=<node>` only means that node *must be included*. If you request `--ntasks > 1` without `--nodes=1` and the node doesn't have enough free CPUs, SLURM can spill the remaining tasks onto other nodes (and reserve `--mem` on each node). Always include `--nodes=1` to stay strictly on that one machine. See [`--nodelist` in Commands In-Depth](0b-commands-in-depth.md#--nodelistthor).
 
 ### Common GPU Memory Amounts
 
@@ -584,7 +588,7 @@ Use this to make sure you haven't missed a step, from first connection to finish
 - [ ] Use `--partition=gpu`
 - [ ] Use `--gres=gpu_mem:N` (**not** `--gres=gpu:1` — that silently caps you at 12 GB)
 - [ ] Check available VRAM with `check_gpu` before submitting
-- [ ] Optionally use `--nodelist=thor`, `--nodelist=tramuntana-n1`, or `--nodelist=barracuda` for a specific GPU
+- [ ] Optionally use `--nodes=1 --nodelist=thor` (or `tramuntana-n1`, `barracuda`) for a specific GPU — always include `--nodes=1` with `--nodelist` so multi-task jobs cannot spill onto other nodes
 
 **🚀 5. Submit & Monitor**
 - [ ] Check available CPU/RAM with `check_cpu_ram` before submitting

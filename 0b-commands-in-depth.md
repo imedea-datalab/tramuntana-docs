@@ -53,7 +53,7 @@ To actually use all 4 slots, you need a **launcher** — either `srun` (which is
 #### `--nodes=2`
 **"I need 2 physical servers."**
 
-Use this when a single machine doesn't have enough resources for your job. For example, you check `sinfo` and see that ada has only 50 free cores but you need 100 — so you request 2 nodes to combine resources across machines.
+Sets both the **minimum and maximum** number of physical nodes allocated to your job (when a single number is given, `--nodes=1` means strictly 1 node, `--nodes=2` means strictly 2 nodes). Use `--nodes=2` when a single machine doesn't have enough resources for your job — for example, you check `sinfo` and see that `ada` has only 50 free cores but you need 100, so you request 2 nodes to combine resources across machines. Conversely, use `--nodes=1` whenever you want to guarantee your job stays on a single machine (especially when using `--nodelist` with `--ntasks > 1`).
 
 You can check what's currently available on each node:
 ```bash
@@ -71,15 +71,24 @@ If you asked for `--nodes=2 --ntasks=4`, SLURM could put all 4 tasks on one node
 
 ---
 
-#### `--nodelist=thor,ada`
-**"I specifically want to run on these exact machines."**
+#### `--nodelist=thor`
+**"My job MUST include this specific machine."**
 
-This forces the job scheduler to use the exact nodes you name. If any of them are busy, your job will stay pending in the queue until they're free.
+`--nodelist` tells SLURM which node(s) **must be included** in your job's allocation.
 
-This is useful for GPU jobs when you know which node has the GPU you want:
-```bash
-#SBATCH --nodelist=thor       # Run specifically on thor (2x RTX 6000 Ada GPUs)
-```
+> [!WARNING]
+> **`--nodelist` is a MINIMUM, not an exclusive limit!**
+>
+> By itself, `--nodelist=pampero` does **not** restrict your job to *only* `pampero`. If you request multiple tasks (e.g., `--ntasks=64`) without setting `--nodes=1`, and `pampero` only has 60 free CPUs, SLURM will allocate 60 CPUs on `pampero` **plus 4 CPUs on another node** (such as `thor`) instead of waiting for `pampero` to free up. Because `--mem` is **per node**, this also reserves your requested memory on every allocated node.
+>
+> **To run strictly on one specific node, ALWAYS pair `--nodelist` with `--nodes=1`:**
+> ```bash
+> #SBATCH --nodes=1             # Strictly limit to 1 node (prevents spillover onto other nodes)
+> #SBATCH --nodelist=thor       # Run only on thor (2x RTX 6000 Ada GPUs)
+> ```
+> With `--nodes=1`, if the requested node does not yet have enough free CPUs/RAM, your job will safely wait in the queue (`PENDING`) until all requested resources fit on that single node.
+>
+> *(Note: listing multiple nodes like `--nodelist=thor,ada` tells SLURM to allocate **both** `thor` **and** `ada` at the same time — not "either `thor` or `ada`".)*
 
 ---
 
